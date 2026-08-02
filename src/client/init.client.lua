@@ -1,14 +1,16 @@
 --[[
-	Client entry point. Grows into the game's client-side bootstrapping (UI,
-	input, camera) as systems are added; for now it only proves the Rojo
-	sync and the shared modules are wired up correctly.
+	Client entry point. Starts every controller from a spawned task
+	because several of them wait for replicated instances (PlayerGui,
+	Shared, remotes) and startup must never block the main task.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Client = script
+local EffectsController = require(Client.EffectsController)
+local GatePrompt = require(Client.GatePrompt)
+local ShopGui = require(Client.ShopGui)
+local SizeHud = require(Client.SizeHud)
 
--- WaitForChild instead of a direct index: on the client, replicated
--- instances may not have arrived yet when this script first runs.
-local Shared = ReplicatedStorage:WaitForChild("Shared")
-local GamePhase = require(Shared:WaitForChild("GamePhase"))
-
-print("Client started in phase:", GamePhase.Lobby)
+task.spawn(SizeHud.start)
+task.spawn(GatePrompt.start)
+task.spawn(ShopGui.start)
+task.spawn(EffectsController.start)

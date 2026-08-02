@@ -1,5 +1,9 @@
 # Roblox-1.0
 
+**+1 Size Escape** — grow huge to open gates, shrink small to squeeze
+through cracks. See [GAME_DESIGN.md](GAME_DESIGN.md) for the design and the
+map-building tags.
+
 A Roblox game project, developed file-first: the code lives in this
 repository and syncs into Roblox Studio with [Rojo](https://rojo.space/).
 
