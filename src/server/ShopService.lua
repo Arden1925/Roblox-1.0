@@ -1,16 +1,27 @@
 --[[
-	Tracks which game passes each player owns. Ownership checks hit the
-	Marketplace API, which is slow and can fail, so results are cached per
-	player and refreshed when a purchase completes in-session.
+	Everything Robux: game pass ownership, developer product receipts, and
+	the effects they grant.
+
+	Ownership and timed effects are published as player attributes
+	(Owns<PassKey> booleans, <EffectKey>Until server timestamps) so any
+	system -- server or client -- can read them without depending on this
+	module. Attributes also die with the player, which removes a whole
+	class of cleanup bugs.
 ]]
 
 local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
 
-local ownedByUserId: { [number]: { [string]: boolean } } = {}
+local VIP_TRAIL_COLOR = Color3.fromRGB(253, 203, 110)
+
+-- Injected by init.server.lua so this module never has to require
+-- SizeService (which requires this module).
+local grantMaxSize: (Player, number) -> () = function() end
 
 local ShopService = {}
 
@@ -24,41 +35,125 @@ local function passKeyForId(gamePassId: number): string?
 	return nil
 end
 
+local function productForId(productId: number): { [string]: any }?
+	for _, world in ipairs(GameConfig.worlds) do
+		if world.cityProduct.productId == productId then
+			return world.cityProduct
+		end
+	end
+
+	return nil
+end
+
+local function applyVipTrail(character: Model)
+	local rootPart = character:WaitForChild("HumanoidRootPart", 10)
+	if rootPart == nil or rootPart:FindFirstChild("VipTrail") ~= nil then
+		return
+	end
+
+	local topAttachment = Instance.new("Attachment")
+	topAttachment.Name = "VipTrailTop"
+	topAttachment.Position = Vector3.new(0, 1, 0)
+	topAttachment.Parent = rootPart
+
+	local bottomAttachment = Instance.new("Attachment")
+	bottomAttachment.Name = "VipTrailBottom"
+	bottomAttachment.Position = Vector3.new(0, -1, 0)
+	bottomAttachment.Parent = rootPart
+
+	local trail = Instance.new("Trail")
+	trail.Name = "VipTrail"
+	trail.Attachment0 = topAttachment
+	trail.Attachment1 = bottomAttachment
+	trail.Color = ColorSequence.new(VIP_TRAIL_COLOR)
+	trail.Transparency = NumberSequence.new(0.3, 1)
+	trail.Lifetime = 0.4
+	trail.FaceCamera = true
+	trail.Parent = rootPart
+end
+
+local function enableVipPerks(player: Player)
+	if player.Character ~= nil then
+		task.spawn(applyVipTrail, player.Character)
+	end
+
+	player.CharacterAdded:Connect(function(character)
+		if player:GetAttribute("OwnsVip") == true then
+			task.spawn(applyVipTrail, character)
+		end
+	end)
+end
+
 --[[
-	Fetches ownership of every configured pass for a player. Yields; call
-	from a spawned task at join time so later lookups are instant.
+	Fetches ownership of every configured pass for a player and publishes
+	the results as attributes. Yields; call from a spawned task at join.
 ]]
 function ShopService.prefetchAsync(player: Player)
-	local owned = {}
-	ownedByUserId[player.UserId] = owned
-
 	for _, pass in ipairs(GameConfig.passes) do
 		if pass.gamePassId ~= 0 then
 			-- UserOwnsGamePassAsync throws on Marketplace outages; treat
 			-- failure as not-owned and let a rejoin retry it.
-			local success, result = pcall(function()
+			local success, owns = pcall(function()
 				return MarketplaceService:UserOwnsGamePassAsync(player.UserId, pass.gamePassId)
 			end)
 
-			owned[pass.key] = success and result == true
+			player:SetAttribute("Owns" .. pass.key, success and owns == true)
+		else
+			player:SetAttribute("Owns" .. pass.key, false)
 		end
+	end
+
+	if player:GetAttribute("OwnsVip") == true then
+		enableVipPerks(player)
 	end
 end
 
 function ShopService.playerOwnsPass(player: Player, passKey: string): boolean
-	local owned = ownedByUserId[player.UserId]
-	if owned == nil then
-		return false
+	return player:GetAttribute("Owns" .. passKey) == true
+end
+
+function ShopService.effectActive(player: Player, effectKey: string): boolean
+	local untilTime = player:GetAttribute(effectKey .. "Until")
+
+	return typeof(untilTime) == "number" and untilTime > Workspace:GetServerTimeNow()
+end
+
+local function grantProduct(player: Player, product: { [string]: any })
+	if product.effect == "instantSize" then
+		grantMaxSize(player, product.amount)
+	elseif product.effect == "timed" then
+		local expiresAt = Workspace:GetServerTimeNow() + product.durationSeconds
+		player:SetAttribute(product.effectKey .. "Until", expiresAt)
+	end
+end
+
+local function processReceipt(receiptInfo: { [string]: any }): Enum.ProductPurchaseDecision
+	local player = Players:GetPlayerByUserId(receiptInfo.PlayerId)
+	if player == nil then
+		-- Buyer left; Roblox will redeliver this receipt on their next
+		-- join, so granting nothing now loses nothing.
+		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	return owned[passKey] == true
+	local product = productForId(receiptInfo.ProductId)
+	if product == nil then
+		-- An ID we do not recognize means the config and the website
+		-- disagree. Granting closes the receipt: retrying forever would
+		-- never succeed and would block the player's purchase queue.
+		warn(string.format("Receipt for unknown product %d", receiptInfo.ProductId))
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
+
+	grantProduct(player, product)
+
+	return Enum.ProductPurchaseDecision.PurchaseGranted
 end
 
-function ShopService.forgetPlayer(player: Player)
-	ownedByUserId[player.UserId] = nil
-end
+function ShopService.start(dependencies: { grantMaxSize: (Player, number) -> () })
+	grantMaxSize = dependencies.grantMaxSize
 
-function ShopService.start()
+	MarketplaceService.ProcessReceipt = processReceipt
+
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(
 		function(player, gamePassId, wasPurchased)
 			if not wasPurchased then
@@ -66,9 +161,12 @@ function ShopService.start()
 			end
 
 			local passKey = passKeyForId(gamePassId)
-			local owned = ownedByUserId[player.UserId]
-			if passKey ~= nil and owned ~= nil then
-				owned[passKey] = true
+			if passKey ~= nil then
+				player:SetAttribute("Owns" .. passKey, true)
+
+				if passKey == "Vip" then
+					enableVipPerks(player)
+				end
 			end
 		end
 	)

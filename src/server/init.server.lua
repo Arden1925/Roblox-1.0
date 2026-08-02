@@ -12,20 +12,39 @@ local Server = script
 local DataService = require(Server.DataService)
 local GateService = require(Server.GateService)
 local MapGenerator = require(Server.MapGenerator)
+local ObstacleService = require(Server.ObstacleService)
 local RebirthService = require(Server.RebirthService)
 local ShopService = require(Server.ShopService)
 local SizeService = require(Server.SizeService)
+local WorldService = require(Server.WorldService)
 
 local Shared = ReplicatedStorage.Shared
 local Remotes = require(Shared.Remotes)
 
 Remotes.createAll()
 
+-- Progress is split across services; saving needs it reassembled into
+-- one record.
+local function snapshotPlayer(player: Player): DataService.PlayerData?
+	local sizeSnapshot = SizeService.snapshot(player)
+	local reachedWorld = WorldService.reachedWorld(player)
+	if sizeSnapshot == nil or reachedWorld == nil then
+		return nil
+	end
+
+	return {
+		maxSize = sizeSnapshot.maxSize,
+		rebirths = sizeSnapshot.rebirths,
+		reachedWorld = reachedWorld,
+	}
+end
+
 local function onPlayerAdded(player: Player)
 	task.spawn(ShopService.prefetchAsync, player)
 
 	local data = DataService.loadAsync(player)
 	SizeService.initializePlayer(player, data)
+	WorldService.initializePlayer(player, data.reachedWorld)
 end
 
 Players.PlayerAdded:Connect(function(player)
@@ -38,9 +57,9 @@ for _, player in ipairs(Players:GetPlayers()) do
 end
 
 Players.PlayerRemoving:Connect(function(player)
-	local snapshot = SizeService.snapshot(player)
+	local snapshot = snapshotPlayer(player)
 	SizeService.removePlayer(player)
-	ShopService.forgetPlayer(player)
+	WorldService.removePlayer(player)
 
 	if snapshot ~= nil then
 		task.spawn(function()
@@ -55,6 +74,9 @@ end)
 local attemptRebirth = Remotes.get("AttemptRebirth") :: RemoteFunction
 attemptRebirth.OnServerInvoke = RebirthService.attemptRebirth
 
+local requestTeleport = Remotes.get("RequestTeleport") :: RemoteFunction
+requestTeleport.OnServerInvoke = WorldService.attemptTeleport
+
 local requestInstantShrink = Remotes.get("RequestInstantShrink") :: RemoteEvent
 requestInstantShrink.OnServerEvent:Connect(function(player)
 	-- Ownership is checked server-side; the client button is a request.
@@ -63,8 +85,12 @@ requestInstantShrink.OnServerEvent:Connect(function(player)
 	end
 end)
 
-DataService.start(SizeService.snapshot)
-ShopService.start()
+DataService.start(snapshotPlayer)
+ShopService.start({
+	grantMaxSize = SizeService.grantMaxSize,
+})
 SizeService.start()
 GateService.start()
+WorldService.start()
+ObstacleService.start()
 MapGenerator.generate()

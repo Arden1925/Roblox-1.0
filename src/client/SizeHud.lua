@@ -6,10 +6,15 @@
 ]]
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local Client = script.Parent
+local Toast = require(Client.Toast)
 local UiBuilder = require(Client.UiBuilder)
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local GameConfig = require(Shared.GameConfig)
 
 local BAR_TWEEN_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local PUNCH_TWEEN_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
@@ -106,10 +111,31 @@ local function buildGui(): { [string]: Instance }
 		Parent = rebirthLabel,
 	})
 
+	local worldLabel = UiBuilder.create("TextLabel", {
+		Name = "WorldLabel",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -72),
+		Size = UDim2.new(0, 260, 0, 28),
+		BackgroundColor3 = Color3.fromRGB(30, 39, 46),
+		BackgroundTransparency = 0.25,
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamBold,
+		Text = "",
+		TextColor3 = Color3.fromRGB(210, 218, 226),
+		TextSize = 15,
+		Parent = screenGui,
+	})
+
+	UiBuilder.create("UICorner", {
+		CornerRadius = UDim.new(0, 8),
+		Parent = worldLabel,
+	})
+
 	return {
 		sizeLabel = sizeLabel,
 		barFill = barFill,
 		rebirthLabel = rebirthLabel,
+		worldLabel = worldLabel,
 	}
 end
 
@@ -155,13 +181,40 @@ function SizeHud.start()
 		gui.rebirthLabel.Text = string.format("Rebirths %d - x%.1f growth", rebirths, multiplier)
 	end
 
+	local function refreshWorld()
+		local worldIndex = localPlayer:GetAttribute("CurrentWorld")
+		local world = if typeof(worldIndex) == "number" then GameConfig.worlds[worldIndex] else nil
+		if world ~= nil then
+			gui.worldLabel.Text = string.format("World %d - %s", worldIndex, world.name)
+		end
+	end
+
+	-- ReachedWorld rises exactly once per first-time wall crossing, so a
+	-- change (beyond the initial load) is always worth celebrating.
+	local knownReached: number? = nil
+	localPlayer:GetAttributeChangedSignal("ReachedWorld"):Connect(function()
+		local reached = localPlayer:GetAttribute("ReachedWorld")
+		if typeof(reached) ~= "number" then
+			return
+		end
+
+		if knownReached ~= nil and reached > knownReached and GameConfig.worlds[reached] then
+			Toast.show(string.format("New world reached: %s!", GameConfig.worlds[reached].name))
+		end
+		knownReached = reached
+	end)
+
 	localPlayer:GetAttributeChangedSignal("CurrentSize"):Connect(refresh)
 	localPlayer:GetAttributeChangedSignal("MaxSize"):Connect(refresh)
 	localPlayer:GetAttributeChangedSignal("Rebirths"):Connect(refreshRebirths)
 	localPlayer:GetAttributeChangedSignal("GrowthMultiplier"):Connect(refreshRebirths)
+	localPlayer:GetAttributeChangedSignal("CurrentWorld"):Connect(refreshWorld)
+
+	knownReached = localPlayer:GetAttribute("ReachedWorld")
 
 	refresh()
 	refreshRebirths()
+	refreshWorld()
 end
 
 return SizeHud

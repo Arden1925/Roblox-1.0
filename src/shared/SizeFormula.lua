@@ -8,6 +8,12 @@
 local Shared = script.Parent
 local GameConfig = require(Shared.GameConfig)
 
+export type PassFlags = {
+	doubleGrowth: boolean?,
+	vip: boolean?,
+	doubleRebirthBonus: boolean?,
+}
+
 local SizeFormula = {}
 
 --[[
@@ -32,15 +38,25 @@ function SizeFormula.jumpPowerForScale(scale: number): number
 	return math.clamp(50 * math.sqrt(scale), 40, 120)
 end
 
-function SizeFormula.growthMultiplier(rebirths: number, ownsDoubleGrowth: boolean): number
-	local rebirthBonus = 1 + rebirths * GameConfig.rebirth.multiplierPerRebirth
-	local passMultiplier = if ownsDoubleGrowth then 2 else 1
+function SizeFormula.growthMultiplier(rebirths: number, flags: PassFlags): number
+	local perRebirth = GameConfig.rebirth.multiplierPerRebirth
+	if flags.doubleRebirthBonus then
+		perRebirth *= 2
+	end
 
-	return rebirthBonus * passMultiplier
+	local multiplier = 1 + rebirths * perRebirth
+	if flags.doubleGrowth then
+		multiplier *= 2
+	end
+	if flags.vip then
+		multiplier *= 1 + GameConfig.passEffects.vipGrowthBonus
+	end
+
+	return multiplier
 end
 
-function SizeFormula.growthPerTick(rebirths: number, ownsDoubleGrowth: boolean): number
-	return GameConfig.growth.sizePerTick * SizeFormula.growthMultiplier(rebirths, ownsDoubleGrowth)
+function SizeFormula.growthPerTick(rebirths: number, flags: PassFlags): number
+	return GameConfig.growth.sizePerTick * SizeFormula.growthMultiplier(rebirths, flags)
 end
 
 function SizeFormula.requiredSizeForRebirth(rebirths: number): number
@@ -51,8 +67,18 @@ function SizeFormula.canPassGate(currentSize: number, requiredSize: number): boo
 	return currentSize >= requiredSize
 end
 
-function SizeFormula.canFitCrack(currentSize: number, maxAllowedSize: number): boolean
-	return currentSize <= maxAllowedSize
+--[[
+	allowanceMultiplier stretches how big you may be and still fit: 1 for
+	most players, above 1 with Super Squeeze or a Slick Coating.
+]]
+function SizeFormula.canFitCrack(
+	currentSize: number,
+	maxAllowedSize: number,
+	allowanceMultiplier: number?
+): boolean
+	local allowance = if allowanceMultiplier ~= nil then allowanceMultiplier else 1
+
+	return currentSize <= maxAllowedSize * allowance
 end
 
 return SizeFormula

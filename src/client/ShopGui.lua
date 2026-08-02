@@ -1,16 +1,17 @@
 --[[
-	The side buttons (Shop, Rebirth, and Shrink for pass owners), the shop
-	window built from GameConfig.passes, and the toast that shows server
-	replies. Purchases prompt Roblox's own dialog; ownership that matters
-	is verified server-side, so everything here is presentation.
+	The side buttons (Shop, Rebirth, and Shrink for pass owners), and the
+	shop window: every game pass with live owned-state, plus each city's
+	exclusive item, buyable only while standing in that city. Purchases
+	prompt Roblox's own dialog; ownership that matters is verified
+	server-side, so everything here is presentation.
 ]]
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 
 local Client = script.Parent
+local Toast = require(Client.Toast)
 local UiBuilder = require(Client.UiBuilder)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -18,11 +19,10 @@ local GameConfig = require(Shared.GameConfig)
 local Remotes = require(Shared.Remotes)
 
 local PANEL_COLOR = Color3.fromRGB(30, 39, 46)
+local CARD_COLOR = Color3.fromRGB(47, 54, 64)
 local ACCENT_COLOR = Color3.fromRGB(76, 209, 55)
+local CITY_COLOR = Color3.fromRGB(156, 136, 255)
 local DISABLED_COLOR = Color3.fromRGB(72, 84, 96)
-
-local TOAST_VISIBLE_SECONDS = 2.5
-local TOAST_FADE_INFO = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 local localPlayer = Players.LocalPlayer
 
@@ -51,12 +51,12 @@ local function createSideButton(parent: Instance, order: number, text: string): 
 	return button :: TextButton
 end
 
-local function createPassCard(parent: Instance, order: number, pass: { [string]: any })
+local function createCard(parent: Instance, order: number, name: string, description: string)
 	local card = UiBuilder.create("Frame", {
-		Name = pass.key,
+		Name = name,
 		LayoutOrder = order,
 		Size = UDim2.new(1, -16, 0, 84),
-		BackgroundColor3 = Color3.fromRGB(47, 54, 64),
+		BackgroundColor3 = CARD_COLOR,
 		BorderSizePixel = 0,
 		Parent = parent,
 	})
@@ -67,58 +67,138 @@ local function createPassCard(parent: Instance, order: number, pass: { [string]:
 	})
 
 	UiBuilder.create("TextLabel", {
-		Name = "PassName",
+		Name = "CardName",
 		Position = UDim2.new(0, 12, 0, 8),
 		Size = UDim2.new(1, -140, 0, 24),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
-		Text = pass.name,
+		Text = name,
 		TextColor3 = Color3.fromRGB(255, 255, 255),
-		TextSize = 20,
+		TextSize = 19,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = card,
 	})
 
 	UiBuilder.create("TextLabel", {
-		Name = "PassDescription",
+		Name = "CardDescription",
 		Position = UDim2.new(0, 12, 0, 36),
 		Size = UDim2.new(1, -140, 0, 40),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
-		Text = pass.description,
+		Text = description,
 		TextColor3 = Color3.fromRGB(210, 218, 226),
-		TextSize = 15,
+		TextSize = 14,
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
 		Parent = card,
 	})
 
-	local available = pass.gamePassId ~= 0
-	local buyButton = UiBuilder.create("TextButton", {
-		Name = "BuyButton",
+	local actionButton = UiBuilder.create("TextButton", {
+		Name = "ActionButton",
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -12, 0.5, 0),
-		Size = UDim2.new(0, 110, 0, 40),
-		BackgroundColor3 = if available then ACCENT_COLOR else DISABLED_COLOR,
+		Size = UDim2.new(0, 112, 0, 40),
+		BackgroundColor3 = DISABLED_COLOR,
 		BorderSizePixel = 0,
 		Font = Enum.Font.GothamBold,
-		Text = if available then string.format("R$ %d", pass.robuxPrice) else "COMING SOON",
+		Text = "",
 		TextColor3 = Color3.fromRGB(255, 255, 255),
-		TextSize = if available then 18 else 13,
+		TextSize = 16,
 		Parent = card,
 	})
 
 	UiBuilder.create("UICorner", {
 		CornerRadius = UDim.new(0, 10),
-		Parent = buyButton,
+		Parent = actionButton,
 	})
 
-	if available then
-		buyButton.Activated:Connect(function()
-			MarketplaceService:PromptGamePassPurchase(localPlayer, pass.gamePassId)
-		end)
+	return actionButton :: TextButton
+end
+
+local function createSectionHeader(parent: Instance, order: number, text: string)
+	UiBuilder.create("TextLabel", {
+		Name = text,
+		LayoutOrder = order,
+		Size = UDim2.new(1, -16, 0, 28),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		Text = text,
+		TextColor3 = Color3.fromRGB(210, 218, 226),
+		TextSize = 16,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = parent,
+	})
+end
+
+local function addPassCard(parent: Instance, order: number, pass: { [string]: any })
+	local button = createCard(parent, order, pass.name, pass.description)
+
+	local function refresh()
+		if localPlayer:GetAttribute("Owns" .. pass.key) == true then
+			button.BackgroundColor3 = DISABLED_COLOR
+			button.Text = "OWNED"
+		elseif pass.gamePassId ~= 0 then
+			button.BackgroundColor3 = ACCENT_COLOR
+			button.Text = string.format("R$ %d", pass.robuxPrice)
+		else
+			button.BackgroundColor3 = DISABLED_COLOR
+			button.Text = "COMING SOON"
+		end
 	end
+
+	button.Activated:Connect(function()
+		local owned = localPlayer:GetAttribute("Owns" .. pass.key) == true
+		if not owned and pass.gamePassId ~= 0 then
+			MarketplaceService:PromptGamePassPurchase(localPlayer, pass.gamePassId)
+		end
+	end)
+
+	localPlayer:GetAttributeChangedSignal("Owns" .. pass.key):Connect(refresh)
+	refresh()
+end
+
+local function addCityCard(
+	parent: Instance,
+	order: number,
+	worldIndex: number,
+	world: { [string]: any }
+)
+	local product = world.cityProduct
+	local title = string.format("%s (%s)", product.name, world.name)
+	local button = createCard(parent, order, title, product.description)
+
+	local function refresh()
+		local inCity = localPlayer:GetAttribute("CurrentWorld") == worldIndex
+
+		if product.productId == 0 then
+			button.BackgroundColor3 = DISABLED_COLOR
+			button.Text = "COMING SOON"
+		elseif inCity then
+			button.BackgroundColor3 = CITY_COLOR
+			button.Text = string.format("R$ %d", product.robuxPrice)
+		else
+			button.BackgroundColor3 = DISABLED_COLOR
+			button.Text = string.format("VISIT %s", string.upper(world.name))
+			button.TextSize = 12
+		end
+
+		if inCity then
+			button.TextSize = 16
+		end
+	end
+
+	button.Activated:Connect(function()
+		local inCity = localPlayer:GetAttribute("CurrentWorld") == worldIndex
+		if inCity and product.productId ~= 0 then
+			MarketplaceService:PromptProductPurchase(localPlayer, product.productId)
+		elseif not inCity then
+			Toast.show(string.format("Travel to %s to buy its city item!", world.name))
+		end
+	end)
+
+	localPlayer:GetAttributeChangedSignal("CurrentWorld"):Connect(refresh)
+	refresh()
 end
 
 local function buildShopWindow(parent: Instance): Frame
@@ -126,7 +206,7 @@ local function buildShopWindow(parent: Instance): Frame
 		Name = "ShopWindow",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
-		Size = UDim2.new(0, 380, 0, 320),
+		Size = UDim2.new(0, 420, 0, 440),
 		BackgroundColor3 = PANEL_COLOR,
 		BorderSizePixel = 0,
 		Visible = false,
@@ -186,28 +266,24 @@ local function buildShopWindow(parent: Instance): Frame
 		Parent = window,
 	})
 
-	local listLayout = UiBuilder.create("UIListLayout", {
+	UiBuilder.create("UIListLayout", {
 		Padding = UDim.new(0, 8),
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = cardList,
 	})
 
+	createSectionHeader(cardList, 0, "GAME PASSES")
 	for order, pass in ipairs(GameConfig.passes) do
-		createPassCard(cardList, order, pass)
+		addPassCard(cardList, order, pass)
+	end
+
+	createSectionHeader(cardList, 100, "CITY ITEMS")
+	for worldIndex, world in ipairs(GameConfig.worlds) do
+		addCityCard(cardList, 100 + worldIndex, worldIndex, world)
 	end
 
 	return window :: Frame
-end
-
-local function instantShrinkPassId(): number
-	for _, pass in ipairs(GameConfig.passes) do
-		if pass.key == "InstantShrink" then
-			return pass.gamePassId
-		end
-	end
-
-	return 0
 end
 
 function ShopGui.start()
@@ -235,46 +311,6 @@ function ShopGui.start()
 		Parent = buttonColumn,
 	})
 
-	local toast = UiBuilder.create("TextLabel", {
-		Name = "Toast",
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -24),
-		Size = UDim2.new(0, 420, 0, 40),
-		BackgroundColor3 = PANEL_COLOR,
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Font = Enum.Font.GothamBold,
-		Text = "",
-		TextColor3 = Color3.fromRGB(255, 255, 255),
-		TextSize = 17,
-		TextTransparency = 1,
-		TextWrapped = true,
-		Parent = screenGui,
-	})
-
-	local toastToken = 0
-	local function showToast(message: string)
-		toastToken += 1
-		local token = toastToken
-
-		toast.Text = message
-		toast.TextTransparency = 0
-		toast.BackgroundTransparency = 0.25
-
-		task.delay(TOAST_VISIBLE_SECONDS, function()
-			-- A newer toast owns the label now; let it manage the fade.
-			if token ~= toastToken then
-				return
-			end
-
-			local fadeTween = TweenService:Create(toast, TOAST_FADE_INFO, {
-				TextTransparency = 1,
-				BackgroundTransparency = 1,
-			})
-			fadeTween:Play()
-		end)
-	end
-
 	local shopWindow = buildShopWindow(screenGui)
 
 	local shopButton = createSideButton(buttonColumn, 1, "Shop")
@@ -289,31 +325,25 @@ function ShopGui.start()
 
 			-- InvokeServer throws if the server errors mid-call; a toast
 			-- beats a silent dead button.
-			local invoked, success, message = pcall(function()
+			local invoked, _success, message = pcall(function()
 				return attemptRebirth:InvokeServer()
 			end)
 
-			if invoked then
-				showToast(message)
-			else
-				showToast("Something went wrong -- try again.")
+			if invoked and message ~= nil then
+				Toast.show(message)
+			elseif not invoked then
+				Toast.show("Something went wrong -- try again.")
 			end
 		end)
 	end)
 
-	local function addShrinkButtonIfOwned()
-		local passId = instantShrinkPassId()
-		if passId == 0 then
-			return
-		end
+	-- The Shrink button exists only for Instant Shrink owners, appearing
+	-- the moment the pass is bought.
+	local function refreshShrinkButton()
+		local owns = localPlayer:GetAttribute("OwnsInstantShrink") == true
+		local existing = buttonColumn:FindFirstChild("ShrinkButton")
 
-		-- Display-only check; the server verifies again on every use.
-		-- UserOwnsGamePassAsync throws on Marketplace outages.
-		local success, owns = pcall(function()
-			return MarketplaceService:UserOwnsGamePassAsync(localPlayer.UserId, passId)
-		end)
-
-		if success and owns == true and buttonColumn:FindFirstChild("ShrinkButton") == nil then
+		if owns and existing == nil then
 			local shrinkButton = createSideButton(buttonColumn, 3, "Shrink")
 			shrinkButton.Name = "ShrinkButton"
 			shrinkButton.Activated:Connect(function()
@@ -322,16 +352,18 @@ function ShopGui.start()
 					requestInstantShrink:FireServer()
 				end)
 			end)
+		elseif not owns and existing ~= nil then
+			existing:Destroy()
 		end
 	end
 
-	task.spawn(addShrinkButtonIfOwned)
+	localPlayer:GetAttributeChangedSignal("OwnsInstantShrink"):Connect(refreshShrinkButton)
+	refreshShrinkButton()
 
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(
-		function(player, gamePassId, wasPurchased)
+		function(player, _gamePassId, wasPurchased)
 			if player == localPlayer and wasPurchased then
-				showToast("Purchase complete -- thank you!")
-				task.spawn(addShrinkButtonIfOwned)
+				Toast.show("Purchase complete -- thank you!")
 			end
 		end
 	)

@@ -7,6 +7,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Server = script.Parent
+local ShopService = require(Server.ShopService)
 local SizeService = require(Server.SizeService)
 
 local Shared = ReplicatedStorage.Shared
@@ -39,7 +40,9 @@ function RebirthService.attemptRebirth(player: Player): (boolean, string)
 	local newRebirths = state.rebirths + 1
 	SizeService.applyRebirth(player)
 
-	local newMultiplier = SizeFormula.growthMultiplier(newRebirths, false)
+	local newMultiplier = SizeFormula.growthMultiplier(newRebirths, {
+		doubleRebirthBonus = ShopService.playerOwnsPass(player, "DoubleRebirthBonus"),
+	})
 
 	return true, string.format("Reborn! You now grow x%.1f as fast. Forever.", newMultiplier)
 end

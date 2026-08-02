@@ -11,6 +11,7 @@ local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
@@ -31,6 +32,22 @@ local barrierStates: { [BasePart]: BarrierState } = {}
 
 local GateService = {}
 
+-- Super Squeeze (a pass) and Slick Coating (a timed city item) both let
+-- players fit tighter cracks. Read from attributes so this module stays
+-- decoupled from the shop.
+local function crackAllowanceFor(player: Player): number
+	if player:GetAttribute("OwnsSuperSqueeze") == true then
+		return GameConfig.passEffects.superSqueezeAllowance
+	end
+
+	local greaseUntil = player:GetAttribute("VentGreaseUntil")
+	if typeof(greaseUntil) == "number" and greaseUntil > Workspace:GetServerTimeNow() then
+		return GameConfig.passEffects.superSqueezeAllowance
+	end
+
+	return 1
+end
+
 local function playerQualifies(barrier: BasePart, player: Player): boolean
 	local currentSize = player:GetAttribute("CurrentSize")
 	if typeof(currentSize) ~= "number" then
@@ -45,7 +62,7 @@ local function playerQualifies(barrier: BasePart, player: Player): boolean
 
 	local maxAllowedSize = barrier:GetAttribute("MaxAllowedSize")
 	return typeof(maxAllowedSize) == "number"
-		and SizeFormula.canFitCrack(currentSize, maxAllowedSize)
+		and SizeFormula.canFitCrack(currentSize, maxAllowedSize, crackAllowanceFor(player))
 end
 
 local function anyQualifyingPlayerNear(barrier: BasePart): boolean

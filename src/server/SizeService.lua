@@ -48,15 +48,20 @@ local stateByPlayer: { [Player]: PlayerState } = {}
 
 local SizeService = {}
 
+local function passFlagsFor(player: Player): SizeFormula.PassFlags
+	return {
+		doubleGrowth = ShopService.playerOwnsPass(player, "DoubleGrowth"),
+		vip = ShopService.playerOwnsPass(player, "Vip"),
+		doubleRebirthBonus = ShopService.playerOwnsPass(player, "DoubleRebirthBonus"),
+	}
+end
+
 local function publishState(player: Player, state: PlayerState)
 	-- Attributes replicate to every client on change, so only write them
 	-- when the visible (rounded) value actually moved.
 	local roundedCurrent = math.floor(state.currentSize)
 	local roundedMax = math.floor(state.maxSize)
-	local multiplier = SizeFormula.growthMultiplier(
-		state.rebirths,
-		ShopService.playerOwnsPass(player, "DoubleGrowth")
-	)
+	local multiplier = SizeFormula.growthMultiplier(state.rebirths, passFlagsFor(player))
 
 	if roundedCurrent ~= state.publishedCurrent then
 		state.publishedCurrent = roundedCurrent
@@ -94,6 +99,18 @@ local function applyCharacterScale(player: Player, state: PlayerState)
 	end
 
 	local scale = SizeFormula.scaleForSize(state.currentSize)
+
+	-- Speed and jump are cheap to set and must react immediately to
+	-- timed boosts like Cloud Boots, so they update every tick even when
+	-- the scale itself has not moved.
+	local jumpBonus = if ShopService.effectActive(player, "CloudBoots")
+		then 1 + GameConfig.passEffects.cloudBootsJumpBonus
+		else 1
+
+	humanoid.UseJumpPower = true
+	humanoid.WalkSpeed = SizeFormula.walkSpeedForScale(scale)
+	humanoid.JumpPower = math.min(SizeFormula.jumpPowerForScale(scale) * jumpBonus, 180)
+
 	if math.abs(scale - state.appliedScale) < 0.01 then
 		return
 	end
@@ -109,9 +126,6 @@ local function applyCharacterScale(player: Player, state: PlayerState)
 		scaleValue.Value = scale
 	end
 
-	humanoid.UseJumpPower = true
-	humanoid.WalkSpeed = SizeFormula.walkSpeedForScale(scale)
-	humanoid.JumpPower = SizeFormula.jumpPowerForScale(scale)
 	state.appliedScale = scale
 end
 
@@ -151,12 +165,10 @@ local function stepPlayer(
 	onShrinkPad: boolean
 )
 	if onGrowPad then
-		local growth = SizeFormula.growthPerTick(
-			state.rebirths,
-			ShopService.playerOwnsPass(player, "DoubleGrowth")
-		)
-
-		state.maxSize += growth
+		state.maxSize += SizeFormula.growthPerTick(state.rebirths, passFlagsFor(player))
+	elseif ShopService.playerOwnsPass(player, "AutoGrow") then
+		local growth = SizeFormula.growthPerTick(state.rebirths, passFlagsFor(player))
+		state.maxSize += growth * GameConfig.passEffects.autoGrowFraction
 	end
 
 	if onShrinkPad then
@@ -266,6 +278,20 @@ function SizeService.forceShrink(player: Player)
 	end
 
 	state.currentSize = math.min(state.currentSize, GameConfig.shrink.shrunkSize)
+	applyCharacterScale(player, state)
+	publishState(player, state)
+end
+
+-- City items like Meadow Surge: paid size is granted to the body
+-- immediately, not drip-fed through regrowth.
+function SizeService.grantMaxSize(player: Player, amount: number)
+	local state = stateByPlayer[player]
+	if state == nil then
+		return
+	end
+
+	state.maxSize += amount
+	state.currentSize += amount
 	applyCharacterScale(player, state)
 	publishState(player, state)
 end

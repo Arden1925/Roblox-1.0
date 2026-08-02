@@ -18,6 +18,13 @@ local GameConfig = require(Shared.GameConfig)
 local DEFAULT_DATA = {
 	maxSize = 0,
 	rebirths = 0,
+	reachedWorld = 1,
+}
+
+export type PlayerData = {
+	maxSize: number,
+	rebirths: number,
+	reachedWorld: number,
 }
 
 local store = nil
@@ -25,10 +32,11 @@ local loadedOkByUserId: { [number]: boolean } = {}
 
 local DataService = {}
 
-local function copyDefaultData(): { maxSize: number, rebirths: number }
+local function copyDefaultData(): PlayerData
 	return {
 		maxSize = DEFAULT_DATA.maxSize,
 		rebirths = DEFAULT_DATA.rebirths,
+		reachedWorld = DEFAULT_DATA.reachedWorld,
 	}
 end
 
@@ -37,7 +45,7 @@ end
 	a spawned task. Always returns usable data -- defaults if every attempt
 	failed -- but only marks the session save-safe on success.
 ]]
-function DataService.loadAsync(player: Player): { maxSize: number, rebirths: number }
+function DataService.loadAsync(player: Player): PlayerData
 	if store == nil then
 		return copyDefaultData()
 	end
@@ -60,6 +68,9 @@ function DataService.loadAsync(player: Player): { maxSize: number, rebirths: num
 				if typeof(result.rebirths) == "number" then
 					data.rebirths = result.rebirths
 				end
+				if typeof(result.reachedWorld) == "number" then
+					data.reachedWorld = result.reachedWorld
+				end
 			end
 
 			return data
@@ -79,7 +90,7 @@ end
 	Saves a snapshot for a player. Yields; call from a spawned task.
 	Silently refuses when the load never succeeded (see file comment).
 ]]
-function DataService.saveAsync(player: Player, snapshot: { maxSize: number, rebirths: number })
+function DataService.saveAsync(player: Player, snapshot: PlayerData)
 	if store == nil or loadedOkByUserId[player.UserId] ~= true then
 		return
 	end
@@ -103,7 +114,7 @@ end
 	Starts autosave and the shutdown save. getSnapshot is injected so this
 	module stays ignorant of where runtime state lives.
 ]]
-function DataService.start(getSnapshot: (Player) -> { maxSize: number, rebirths: number }?)
+function DataService.start(getSnapshot: (Player) -> PlayerData?)
 	-- GetDataStore throws in Studio when API access is disabled; the game
 	-- then runs memory-only, which is fine for local testing.
 	local success, result = pcall(function()

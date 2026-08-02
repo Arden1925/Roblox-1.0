@@ -8,11 +8,13 @@ local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Client = script.Parent
 local UiBuilder = require(Client.UiBuilder)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local GameConfig = require(Shared.GameConfig)
 local SizeFormula = require(Shared.SizeFormula)
 
 local SIZE_GATE_TAG = "SizeGate"
@@ -57,6 +59,21 @@ local function createLabel(barrier: BasePart): TextLabel
 	return label :: TextLabel
 end
 
+-- Mirrors the server's crack allowance (Super Squeeze pass or an active
+-- Slick Coating) so the prompt never contradicts what the gate will do.
+local function crackAllowance(): number
+	if localPlayer:GetAttribute("OwnsSuperSqueeze") == true then
+		return GameConfig.passEffects.superSqueezeAllowance
+	end
+
+	local greaseUntil = localPlayer:GetAttribute("VentGreaseUntil")
+	if typeof(greaseUntil) == "number" and greaseUntil > Workspace:GetServerTimeNow() then
+		return GameConfig.passEffects.superSqueezeAllowance
+	end
+
+	return 1
+end
+
 local function updateLabel(barrier: BasePart, label: TextLabel, currentSize: number)
 	if CollectionService:HasTag(barrier, SIZE_GATE_TAG) then
 		local requiredSize = barrier:GetAttribute("RequiredSize")
@@ -80,7 +97,7 @@ local function updateLabel(barrier: BasePart, label: TextLabel, currentSize: num
 		return
 	end
 
-	if SizeFormula.canFitCrack(currentSize, maxAllowedSize) then
+	if SizeFormula.canFitCrack(currentSize, maxAllowedSize, crackAllowance()) then
 		label.Text = "SQUEEZE THROUGH"
 		label.TextColor3 = CAN_PASS_COLOR
 	else
