@@ -19,3 +19,23 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           version: v2.0.2
           args: --check src
+
+  analyze:
+    name: Luau type analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install analysis tools
+        run: |
+          curl -sSL -o rojo.zip "https://github.com/rojo-rbx/rojo/releases/download/v7.4.4/rojo-7.4.4-linux-x86_64.zip"
+          unzip -o rojo.zip
+          curl -sSL -o luau-lsp.zip "https://github.com/JohnnyMorganz/luau-lsp/releases/latest/download/luau-lsp-linux-x86_64.zip"
+          unzip -o luau-lsp.zip
+          curl -sSL -o globalTypes.d.luau "https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/main/scripts/globalTypes.d.luau"
+          chmod +x rojo luau-lsp
+
+      - name: Analyze
+        run: |
+          ./rojo sourcemap default.project.json -o sourcemap.json
+          ./luau-lsp analyze --sourcemap=sourcemap.json --definitions=globalTypes.d.luau src
