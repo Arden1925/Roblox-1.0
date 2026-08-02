@@ -1,0 +1,7 @@
+# Lints Luau code against the Roblox API surface. Selene generates the
+# Roblox standard library definition on first run.
+std = "roblox"
+
+[lints]
+# The style guide bans globals; treat accidental globals as errors.
+global_usage = "deny"

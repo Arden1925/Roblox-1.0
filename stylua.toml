@@ -1,0 +1,12 @@
+# Formatting rules from STYLE_GUIDE.md: tabs, lines under 100 columns
+# (assuming 4-wide tabs), double quotes, always call with parentheses.
+column_width = 100
+line_endings = "Unix"
+indent_type = "Tabs"
+indent_width = 4
+quote_style = "AutoPreferDouble"
+call_parentheses = "Always"
+collapse_simple_statement = "Never"
+
+[sort_requires]
+enabled = true

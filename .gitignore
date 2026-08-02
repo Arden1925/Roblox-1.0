@@ -1,0 +1,12 @@
+# Roblox place builds
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+
+# Rojo
+sourcemap.json
+
+# OS noise
+.DS_Store
+Thumbs.db
