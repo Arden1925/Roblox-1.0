@@ -15,16 +15,18 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
 
-local DEFAULT_DATA = {
-	maxSize = 0,
-	rebirths = 0,
-	reachedWorld = 1,
-}
-
 export type PlayerData = {
 	maxSize: number,
 	rebirths: number,
 	reachedWorld: number,
+	coins: number,
+	tutorialDone: boolean,
+	pets: { string },
+	equippedPet: string,
+	upgrades: { [string]: number },
+	checkpointsClaimed: { [string]: number },
+	respawnWorld: number,
+	respawnIndex: number,
 }
 
 local store = nil
@@ -34,16 +36,76 @@ local DataService = {}
 
 local function copyDefaultData(): PlayerData
 	return {
-		maxSize = DEFAULT_DATA.maxSize,
-		rebirths = DEFAULT_DATA.rebirths,
-		reachedWorld = DEFAULT_DATA.reachedWorld,
+		maxSize = 0,
+		rebirths = 0,
+		reachedWorld = 1,
+		coins = 0,
+		tutorialDone = false,
+		pets = {},
+		equippedPet = "",
+		upgrades = {},
+		checkpointsClaimed = {},
+		respawnWorld = 1,
+		respawnIndex = 0,
 	}
 end
 
 --[[
-	Fetches a player's saved data, retrying with backoff. Yields; call from
-	a spawned task. Always returns usable data -- defaults if every attempt
-	failed -- but only marks the session save-safe on success.
+	Copies recognized fields from a raw stored value onto fresh defaults,
+	type-checking each one so a corrupt or outdated record can never
+	poison a session.
+]]
+local function sanitize(result: any): PlayerData
+	local data = copyDefaultData()
+	if typeof(result) ~= "table" then
+		return data
+	end
+
+	for _, numberField in ipairs({
+		"maxSize",
+		"rebirths",
+		"reachedWorld",
+		"coins",
+		"respawnWorld",
+		"respawnIndex",
+	}) do
+		if typeof(result[numberField]) == "number" then
+			data[numberField] = result[numberField]
+		end
+	end
+
+	if typeof(result.tutorialDone) == "boolean" then
+		data.tutorialDone = result.tutorialDone
+	end
+	if typeof(result.equippedPet) == "string" then
+		data.equippedPet = result.equippedPet
+	end
+
+	if typeof(result.pets) == "table" then
+		for _, petId in ipairs(result.pets) do
+			if typeof(petId) == "string" then
+				table.insert(data.pets, petId)
+			end
+		end
+	end
+
+	for _, mapField in ipairs({ "upgrades", "checkpointsClaimed" }) do
+		if typeof(result[mapField]) == "table" then
+			for key, value in pairs(result[mapField]) do
+				if typeof(key) == "string" and typeof(value) == "number" then
+					data[mapField][key] = value
+				end
+			end
+		end
+	end
+
+	return data
+end
+
+--[[
+	Fetches a player's saved data, retrying with backoff. Yields; call
+	from a spawned task. Always returns usable data -- defaults if every
+	attempt failed -- but only marks the session save-safe on success.
 ]]
 function DataService.loadAsync(player: Player): PlayerData
 	if store == nil then
@@ -60,20 +122,7 @@ function DataService.loadAsync(player: Player): PlayerData
 		if success then
 			loadedOkByUserId[player.UserId] = true
 
-			local data = copyDefaultData()
-			if typeof(result) == "table" then
-				if typeof(result.maxSize) == "number" then
-					data.maxSize = result.maxSize
-				end
-				if typeof(result.rebirths) == "number" then
-					data.rebirths = result.rebirths
-				end
-				if typeof(result.reachedWorld) == "number" then
-					data.reachedWorld = result.reachedWorld
-				end
-			end
-
-			return data
+			return sanitize(result)
 		end
 
 		if attempt < GameConfig.data.loadAttempts then

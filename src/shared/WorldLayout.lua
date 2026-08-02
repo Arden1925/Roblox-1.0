@@ -11,7 +11,7 @@ local GameConfig = require(Shared.GameConfig)
 local WorldLayout = {}
 
 WorldLayout.width = 120
-WorldLayout.length = 120
+WorldLayout.length = 200
 WorldLayout.startZ = -60
 
 -- The whole map floats slightly above zero so its floors never share a

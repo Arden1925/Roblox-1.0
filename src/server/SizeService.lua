@@ -4,8 +4,11 @@
 	ever change what they see -- never what they are.
 
 	State is published to clients through player attributes (CurrentSize,
-	MaxSize, Rebirths, GrowthMultiplier), which replicate automatically and
-	save us a stream of remote events.
+	MaxSize, Rebirths, GrowthMultiplier, SpeedSetting), which replicate
+	automatically. Bonuses owned by other systems arrive the same way:
+	PetGrowthBonus (PetService), Upgrade<Key> (EconomyService), and
+	<Effect>Until timestamps (ShopService/EconomyService), which keeps
+	this module free of dependencies on any of them.
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -34,10 +37,24 @@ local HUMANOID_SCALE_NAMES = {
 	"HeadScale",
 }
 
+local function upgradeConfigByKey(upgradeKey: string): { [string]: any }?
+	for _, upgrade in ipairs(GameConfig.upgrades) do
+		if upgrade.key == upgradeKey then
+			return upgrade
+		end
+	end
+
+	return nil
+end
+
+local GROWTH_UPGRADE = upgradeConfigByKey("GrowthUpgrade")
+local JUMP_UPGRADE = upgradeConfigByKey("JumpUpgrade")
+
 type PlayerState = {
 	currentSize: number,
 	maxSize: number,
 	rebirths: number,
+	speedSetting: number,
 	appliedScale: number,
 	publishedCurrent: number,
 	publishedMax: number,
@@ -56,12 +73,42 @@ local function passFlagsFor(player: Player): SizeFormula.PassFlags
 	}
 end
 
+local function attributeNumber(player: Player, name: string): number
+	local value = player:GetAttribute(name)
+
+	return if typeof(value) == "number" then value else 0
+end
+
+--[[
+	The one place all growth bonuses combine: passes and rebirths, then
+	the Growth Training upgrade, the equipped pet, and any timed boosts.
+]]
+local function totalGrowthMultiplier(player: Player, state: PlayerState): number
+	local multiplier = SizeFormula.growthMultiplier(state.rebirths, passFlagsFor(player))
+
+	if GROWTH_UPGRADE ~= nil then
+		local level = attributeNumber(player, "UpgradeGrowthUpgrade")
+		multiplier *= 1 + level * GROWTH_UPGRADE.bonusPerLevel
+	end
+
+	multiplier *= 1 + attributeNumber(player, "PetGrowthBonus")
+
+	if ShopService.effectActive(player, "GrowthPotion") then
+		multiplier *= 1.5
+	end
+	if ShopService.effectActive(player, "MysteryGrowth") then
+		multiplier *= 3
+	end
+
+	return multiplier
+end
+
 local function publishState(player: Player, state: PlayerState)
 	-- Attributes replicate to every client on change, so only write them
 	-- when the visible (rounded) value actually moved.
 	local roundedCurrent = math.floor(state.currentSize)
 	local roundedMax = math.floor(state.maxSize)
-	local multiplier = SizeFormula.growthMultiplier(state.rebirths, passFlagsFor(player))
+	local multiplier = math.floor(totalGrowthMultiplier(player, state) * 100) / 100
 
 	if roundedCurrent ~= state.publishedCurrent then
 		state.publishedCurrent = roundedCurrent
@@ -100,15 +147,23 @@ local function applyCharacterScale(player: Player, state: PlayerState)
 
 	local scale = SizeFormula.scaleForSize(state.currentSize)
 
-	-- Speed and jump are cheap to set and must react immediately to
-	-- timed boosts like Cloud Boots, so they update every tick even when
-	-- the scale itself has not moved.
+	-- Speed and jump are cheap to set and must react immediately to the
+	-- slider and timed boosts, so they update every tick even when the
+	-- scale itself has not moved.
+	local speedPotionBonus = if ShopService.effectActive(player, "SpeedPotion")
+		then GameConfig.speed.potionBonus
+		else 0
+
 	local jumpBonus = if ShopService.effectActive(player, "CloudBoots")
 		then 1 + GameConfig.passEffects.cloudBootsJumpBonus
 		else 1
+	if JUMP_UPGRADE ~= nil then
+		local level = attributeNumber(player, "UpgradeJumpUpgrade")
+		jumpBonus *= 1 + level * JUMP_UPGRADE.bonusPerLevel
+	end
 
 	humanoid.UseJumpPower = true
-	humanoid.WalkSpeed = SizeFormula.walkSpeedForScale(scale)
+	humanoid.WalkSpeed = SizeFormula.walkSpeed(state.speedSetting, scale, speedPotionBonus)
 	humanoid.JumpPower = math.min(SizeFormula.jumpPowerForScale(scale) * jumpBonus, 180)
 
 	if math.abs(scale - state.appliedScale) < 0.01 then
@@ -164,10 +219,11 @@ local function stepPlayer(
 	onGrowPad: boolean,
 	onShrinkPad: boolean
 )
+	local growth = GameConfig.growth.sizePerTick * totalGrowthMultiplier(player, state)
+
 	if onGrowPad then
-		state.maxSize += SizeFormula.growthPerTick(state.rebirths, passFlagsFor(player))
+		state.maxSize += growth
 	elseif ShopService.playerOwnsPass(player, "AutoGrow") then
-		local growth = SizeFormula.growthPerTick(state.rebirths, passFlagsFor(player))
 		state.maxSize += growth * GameConfig.passEffects.autoGrowFraction
 	end
 
@@ -196,6 +252,7 @@ function SizeService.initializePlayer(player: Player, data: { maxSize: number, r
 		currentSize = data.maxSize,
 		maxSize = data.maxSize,
 		rebirths = data.rebirths,
+		speedSetting = GameConfig.speed.default,
 		appliedScale = 0,
 		publishedCurrent = -1,
 		publishedMax = -1,
@@ -218,6 +275,7 @@ function SizeService.initializePlayer(player: Player, data: { maxSize: number, r
 
 	leaderstats.Parent = player
 	player:SetAttribute("Rebirths", data.rebirths)
+	player:SetAttribute("SpeedSetting", state.speedSetting)
 
 	-- Respawned characters come back at default scale; force a re-apply.
 	player.CharacterAdded:Connect(function()
@@ -294,6 +352,33 @@ function SizeService.grantMaxSize(player: Player, amount: number)
 	state.currentSize += amount
 	applyCharacterScale(player, state)
 	publishState(player, state)
+end
+
+-- The Size Master pass slider. Clamped to the honest range: no smaller
+-- than a Shrink Pad allows, no bigger than earned Max Size.
+function SizeService.setDesiredSize(player: Player, value: any)
+	local state = stateByPlayer[player]
+	if state == nil or typeof(value) ~= "number" or value ~= value then
+		return
+	end
+
+	if not ShopService.playerOwnsPass(player, "SizeMaster") then
+		return
+	end
+
+	state.currentSize = math.clamp(value, GameConfig.shrink.shrunkSize, state.maxSize)
+	applyCharacterScale(player, state)
+	publishState(player, state)
+end
+
+function SizeService.setDesiredSpeed(player: Player, value: any)
+	local state = stateByPlayer[player]
+	if state == nil or typeof(value) ~= "number" or value ~= value then
+		return
+	end
+
+	state.speedSetting = math.clamp(value, GameConfig.speed.minimum, GameConfig.speed.maximum)
+	player:SetAttribute("SpeedSetting", state.speedSetting)
 end
 
 function SizeService.removePlayer(player: Player)

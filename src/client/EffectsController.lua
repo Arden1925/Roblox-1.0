@@ -4,7 +4,9 @@
 	sensory feedback on the number going up is what makes the loop stick.
 ]]
 
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
@@ -40,7 +42,49 @@ local function attachEmitter(character: Model): ParticleEmitter?
 	return emitter
 end
 
+--[[
+	Spins and bobs every part tagged Spinner (coins, egg orbs, the
+	limited pedestal orb). Purely visual and client-side: the server
+	never moves these parts, so touch detection stays at their true
+	position while every client sees them alive.
+]]
+local function startSpinners()
+	local basePositions: { [BasePart]: Vector3 } = {}
+
+	local function track(part: Instance)
+		if part:IsA("BasePart") then
+			basePositions[part :: BasePart] = (part :: BasePart).Position
+		end
+	end
+
+	for _, part in ipairs(CollectionService:GetTagged("Spinner")) do
+		track(part)
+	end
+	CollectionService:GetInstanceAddedSignal("Spinner"):Connect(track)
+	CollectionService:GetInstanceRemovedSignal("Spinner"):Connect(function(part)
+		basePositions[part] = nil
+	end)
+
+	local elapsed = 0
+	RunService.Heartbeat:Connect(function(deltaSeconds)
+		elapsed += deltaSeconds
+
+		local spin = CFrame.Angles(0, elapsed * 2, 0)
+		local bob = math.sin(elapsed * 2) * 0.5
+
+		for part, basePosition in pairs(basePositions) do
+			if part.Parent == nil then
+				basePositions[part] = nil
+			else
+				part.CFrame = CFrame.new(basePosition + Vector3.new(0, bob, 0)) * spin
+			end
+		end
+	end)
+end
+
 function EffectsController.start()
+	startSpinners()
+
 	local emitter: ParticleEmitter? = nil
 
 	local function onCharacterAdded(character: Model)

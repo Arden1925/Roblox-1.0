@@ -52,6 +52,42 @@ worlds show a teleport button, unreached ones an animated lock and a
 | `FadingPlatform` | Flickers ~0.8s after first touch, vanishes, returns after 3s |
 | `BouncePad` | Launches you upward |
 
+Worlds are 200 studs long and split into three sections -- grow (a size
+gate), shrink (a squeeze crack), and skill (world flavor plus coin
+routes) -- with **checkpoints** between them. Checkpoints save your
+respawn point across sessions and pay coins the first time only.
+
+## Coins
+
+Every award scales with world index: pickups (`Coin` tag), first-touch
+checkpoints, and first-time world reaches. Coins buy, at every world's
+**Station**: potions (consumables; price scales with the world) and
+**forever upgrades** whose price rises each level (Growth Training, Coin
+Magnet, Spring Legs). Worlds divisible by 3 also have a **Mystery
+Machine**: pay coins, get a random strong boost. Balance lives entirely
+in `GameConfig.economy/potions/upgrades`.
+
+## Pets
+
+Each world has an egg capsule (`EggStand` tag). Coin eggs hold 5 pets on
+3 rarity tiers; tiers slide up one per world, so later eggs are strictly
+better. Rarity sets the pet's permanent growth bonus. One pet equips at
+a time and follows you around. Each world also sells a Robux **royal
+egg** (3 exclusive stronger pets), and a **limited Ultra Dragon** sits
+on a pedestal at spawn. Inventory lives in the **Backpack** (bottom-left
+button): Pets, Boosts, and a placeholder tab.
+
+## Sliders
+
+A right-edge panel: **speed** (free, deliberately narrow 12-20 range --
+speed is comfort, never progression) and **body size** (Size Master
+pass, 999 R$), clamped between the shrunk minimum and earned Max Size.
+
+## Tutorial
+
+`GameConfig.tutorialSteps`, shown once to new players as a step-by-step
+card with Next/Skip; the done flag persists.
+
 ## Rebirth
 
 At the required Max Size (rises with each rebirth), a player can rebirth:

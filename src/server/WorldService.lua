@@ -9,6 +9,9 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Server = script.Parent
+local EconomyService = require(Server.EconomyService)
+
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
 local WorldLayout = require(Shared.WorldLayout)
@@ -39,6 +42,7 @@ local function updatePlayerWorld(player: Player)
 	if reached ~= nil and worldIndex > reached then
 		reachedByPlayer[player] = worldIndex
 		player:SetAttribute("ReachedWorld", worldIndex)
+		EconomyService.awardWorldReach(player, worldIndex)
 	end
 end
 

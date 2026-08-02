@@ -28,12 +28,19 @@ function SizeFormula.scaleForSize(size: number): number
 	return GameConfig.scale.minimum + range * saturation
 end
 
--- Square-root curves so big characters feel weighty but never useless and
--- tiny characters stay nimble without being uncontrollable.
-function SizeFormula.walkSpeedForScale(scale: number): number
-	return math.clamp(16 * math.sqrt(scale), 8, 28)
+--[[
+	Speed comes from the player's slider setting; size adds only a gentle
+	nudge on top. Keeping the size term small is a design rule -- speed
+	must stay a comfort setting, never the way you win.
+]]
+function SizeFormula.walkSpeed(speedSetting: number, scale: number, potionBonus: number): number
+	local sizeBonus = 4 * (math.sqrt(scale) - 1)
+
+	return math.clamp(speedSetting + sizeBonus + potionBonus, 8, GameConfig.speed.hardCap)
 end
 
+-- Square-root curve so big characters jump meaningfully higher (walls!)
+-- without breaking physics.
 function SizeFormula.jumpPowerForScale(scale: number): number
 	return math.clamp(50 * math.sqrt(scale), 40, 120)
 end

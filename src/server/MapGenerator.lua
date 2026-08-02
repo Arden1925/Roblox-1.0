@@ -1,13 +1,15 @@
 --[[
-	Builds the playable starter map: a chain of square worlds separated by
-	ever-taller climbable walls, ringed by borders no one can escape. It
-	runs only when the workspace has no tagged pads, so a hand-built map
-	always wins and this file can eventually be deleted without ceremony.
+	Builds the playable starter map: a chain of long square worlds, each
+	split into three sections (grow, shrink, skill) with checkpoints
+	between them, coin routes, an egg capsule, a shop station, and a
+	portal -- separated by ever-taller climbable walls and ringed by
+	borders. It runs only when the workspace has no tagged pads, so a
+	hand-built map always wins.
 
-	All gameplay meaning comes from the same tags and attributes a
-	hand-built map would use (see GAME_DESIGN.md), and all geometry math
-	comes from WorldLayout so the progress tracker always agrees with what
-	got built.
+	All gameplay meaning comes from tags and attributes (see
+	GAME_DESIGN.md); all geometry math comes from WorldLayout so the
+	progress tracker always agrees with what got built. Parts tagged
+	Spinner are purely visual -- the client spins and bobs them.
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -24,6 +26,7 @@ local WALL_THICKNESS = 4
 
 local GROW_PAD_COLOR = Color3.fromRGB(76, 209, 55)
 local SHRINK_PAD_COLOR = Color3.fromRGB(0, 168, 255)
+local GATE_COLOR = Color3.fromRGB(232, 65, 24)
 local CRACK_COLOR = Color3.fromRGB(255, 168, 1)
 local HAZARD_COLOR = Color3.fromRGB(255, 71, 87)
 local BOUNCE_COLOR = Color3.fromRGB(255, 121, 198)
@@ -31,6 +34,8 @@ local WALL_COLOR = Color3.fromRGB(87, 96, 111)
 local BORDER_COLOR = Color3.fromRGB(47, 54, 64)
 local STEP_COLOR = Color3.fromRGB(223, 228, 234)
 local PORTAL_COLOR = Color3.fromRGB(156, 136, 255)
+local COIN_COLOR = Color3.fromRGB(253, 203, 110)
+local CHECKPOINT_COLOR = Color3.fromRGB(0, 206, 201)
 
 local MapGenerator = {}
 
@@ -51,6 +56,36 @@ local function createPart(properties: { [string]: any }): BasePart
 	return part
 end
 
+local function addPrompt(part: BasePart, actionText: string, objectText: string)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = actionText
+	prompt.ObjectText = objectText
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = 14
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = part
+end
+
+local function addBillboard(part: BasePart, text: string, color: Color3, offsetY: number)
+	local billboard = Instance.new("BillboardGui")
+	billboard.Size = UDim2.new(0, 220, 0, 60)
+	billboard.StudsOffsetWorldSpace = Vector3.new(0, offsetY, 0)
+	billboard.AlwaysOnTop = false
+	billboard.MaxDistance = 90
+	billboard.Parent = part
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBlack
+	label.Text = text
+	label.TextColor3 = color
+	label.TextStrokeTransparency = 0.4
+	label.TextSize = 18
+	label.TextWrapped = true
+	label.Parent = billboard
+end
+
 local function createPad(parent: Instance, tag: string, position: Vector3, color: Color3)
 	local pad = createPart({
 		Name = tag,
@@ -64,8 +99,45 @@ local function createPad(parent: Instance, tag: string, position: Vector3, color
 	CollectionService:AddTag(pad, tag)
 end
 
-local function createPortal(parent: Instance, worldIndex: number)
-	local minZ = WorldLayout.boundsForWorld(worldIndex)
+local function createCoin(parent: Instance, position: Vector3, worldIndex: number)
+	local coin = createPart({
+		Name = "Coin",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.6, 3, 3),
+		Position = position + Vector3.new(0, WorldLayout.baseY, 0),
+		Color = COIN_COLOR,
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = parent,
+	})
+
+	coin:SetAttribute("WorldIndex", worldIndex)
+	CollectionService:AddTag(coin, "Coin")
+	CollectionService:AddTag(coin, "Spinner")
+end
+
+local function createCheckpoint(
+	parent: Instance,
+	worldIndex: number,
+	checkpointIndex: number,
+	position: Vector3
+)
+	local checkpoint = createPart({
+		Name = "Checkpoint",
+		Size = Vector3.new(12, 1, 6),
+		Position = position + Vector3.new(0, WorldLayout.baseY, 0),
+		Color = CHECKPOINT_COLOR,
+		Material = Enum.Material.Neon,
+		Parent = parent,
+	})
+
+	checkpoint:SetAttribute("WorldIndex", worldIndex)
+	checkpoint:SetAttribute("CheckpointIndex", checkpointIndex)
+	CollectionService:AddTag(checkpoint, "Checkpoint")
+	addBillboard(checkpoint, "CHECKPOINT", CHECKPOINT_COLOR, 5)
+end
+
+local function createPortal(parent: Instance, worldIndex: number, minZ: number)
 	local portal = createPart({
 		Name = "Portal",
 		Size = Vector3.new(1.5, 12, 8),
@@ -75,23 +147,177 @@ local function createPortal(parent: Instance, worldIndex: number)
 		Parent = parent,
 	})
 
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = "Open Portal"
-	prompt.ObjectText = "World Portal"
-	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = 14
-	prompt.RequiresLineOfSight = false
-	prompt.Parent = portal
-
+	addPrompt(portal, "Open Portal", "World Portal")
 	CollectionService:AddTag(portal, "Portal")
+end
+
+local function createEggStand(parent: Instance, worldIndex: number, minZ: number)
+	local world = GameConfig.worlds[worldIndex]
+
+	local pedestal = createPart({
+		Name = "EggStand",
+		Size = Vector3.new(6, 2, 6),
+		Position = Vector3.new(42, WorldLayout.baseY + 1, minZ + 22),
+		Color = Color3.fromRGB(99, 110, 114),
+		Material = Enum.Material.Marble,
+		Parent = parent,
+	})
+
+	createPart({
+		Name = "EggCapsule",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(9, 7, 7),
+		CFrame = CFrame.new(42, WorldLayout.baseY + 6.5, minZ + 22)
+			* CFrame.Angles(0, 0, math.rad(90)),
+		Color = Color3.fromRGB(223, 249, 251),
+		Material = Enum.Material.Glass,
+		Transparency = 0.6,
+		CanCollide = false,
+		Parent = parent,
+	})
+
+	local egg = createPart({
+		Name = "EggOrb",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.new(3.4, 3.4, 3.4),
+		Position = Vector3.new(42, WorldLayout.baseY + 6.5, minZ + 22),
+		Color = Color3.fromRGB(world.floorColor[1], world.floorColor[2], world.floorColor[3]),
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = parent,
+	})
+	CollectionService:AddTag(egg, "Spinner")
+
+	pedestal:SetAttribute("WorldIndex", worldIndex)
+	addPrompt(pedestal, "View Eggs", world.eggName)
+	addBillboard(pedestal, world.eggName, Color3.fromRGB(255, 255, 255), 10)
+	CollectionService:AddTag(pedestal, "EggStand")
+end
+
+local function createStation(parent: Instance, worldIndex: number, minZ: number)
+	local station = createPart({
+		Name = "ShopStation",
+		Size = Vector3.new(7, 8, 3),
+		Position = Vector3.new(-42, WorldLayout.baseY + 4, minZ + 36),
+		Color = Color3.fromRGB(34, 166, 179),
+		Material = Enum.Material.SmoothPlastic,
+		Parent = parent,
+	})
+
+	station:SetAttribute("WorldIndex", worldIndex)
+	addPrompt(station, "Open Station", "Potions & Upgrades")
+	addBillboard(station, "STATION", Color3.fromRGB(255, 255, 255), 6)
+	CollectionService:AddTag(station, "ShopStation")
+end
+
+local function createMysteryMachine(parent: Instance, worldIndex: number, minZ: number)
+	local machine = createPart({
+		Name = "MysteryMachine",
+		Size = Vector3.new(6, 10, 5),
+		Position = Vector3.new(-42, WorldLayout.baseY + 5, minZ + 52),
+		Color = Color3.fromRGB(232, 67, 147),
+		Material = Enum.Material.Metal,
+		Parent = parent,
+	})
+
+	machine:SetAttribute("WorldIndex", worldIndex)
+	addPrompt(machine, "Insert Coins", "Mystery Machine")
+	addBillboard(machine, "MYSTERY MACHINE", Color3.fromRGB(255, 121, 198), 7)
+	CollectionService:AddTag(machine, "MysteryMachine")
+end
+
+local function createLimitedDisplay(parent: Instance, minZ: number)
+	local pedestal = createPart({
+		Name = "LimitedDisplay",
+		Size = Vector3.new(6, 2, 6),
+		Position = Vector3.new(8, WorldLayout.baseY + 1, minZ + 10),
+		Color = Color3.fromRGB(45, 52, 54),
+		Material = Enum.Material.Marble,
+		Parent = parent,
+	})
+
+	local orb = createPart({
+		Name = "LimitedOrb",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.new(3.6, 3.6, 3.6),
+		Position = Vector3.new(8, WorldLayout.baseY + 5.5, minZ + 10),
+		Color = Color3.fromRGB(255, 234, 167),
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = parent,
+	})
+	CollectionService:AddTag(orb, "Spinner")
+
+	local limited = GameConfig.limitedPet
+	addPrompt(pedestal, "View Limited Pet", limited.name)
+	addBillboard(
+		pedestal,
+		string.format("LIMITED: %s -- R$ %d", limited.name, limited.robuxPrice),
+		Color3.fromRGB(255, 234, 167),
+		9
+	)
+	CollectionService:AddTag(pedestal, "LimitedDisplay")
+end
+
+--[[
+	A wall across the world with a tagged barrier filling its opening.
+	Used for both in-world gates (big enough to pass) and cracks (small
+	enough to fit).
+]]
+local function createBarrierWall(
+	parent: Instance,
+	positionZ: number,
+	openingWidth: number,
+	openingHeight: number,
+	tag: string,
+	attributeName: string,
+	attributeValue: number,
+	barrierColor: Color3
+)
+	local wallHeight = math.max(20, openingHeight + 6)
+	local sideWidth = (WorldLayout.width - openingWidth) / 2
+
+	for _, sideX in ipairs({ -(openingWidth + sideWidth) / 2, (openingWidth + sideWidth) / 2 }) do
+		createPart({
+			Name = "BarrierWall",
+			Size = Vector3.new(sideWidth, wallHeight, WALL_THICKNESS),
+			Position = Vector3.new(sideX, WorldLayout.baseY + wallHeight / 2, positionZ),
+			Color = WALL_COLOR,
+			Material = Enum.Material.Slate,
+			Parent = parent,
+		})
+	end
+
+	createPart({
+		Name = "BarrierWallTop",
+		Size = Vector3.new(openingWidth, wallHeight - openingHeight, WALL_THICKNESS),
+		Position = Vector3.new(
+			0,
+			WorldLayout.baseY + openingHeight + (wallHeight - openingHeight) / 2,
+			positionZ
+		),
+		Color = WALL_COLOR,
+		Material = Enum.Material.Slate,
+		Parent = parent,
+	})
+
+	local barrier = createPart({
+		Name = tag,
+		Size = Vector3.new(openingWidth, openingHeight, WALL_THICKNESS),
+		Position = Vector3.new(0, WorldLayout.baseY + openingHeight / 2, positionZ),
+		Color = barrierColor,
+		Material = Enum.Material.ForceField,
+		Parent = parent,
+	})
+
+	barrier:SetAttribute(attributeName, attributeValue)
+	CollectionService:AddTag(barrier, tag)
 end
 
 --[[
 	The climbable boundary wall after a world, with floating steps on the
 	approach side. Bigger characters jump higher, so the step spacing (a
 	fraction of wall height) is what turns "grow" into "may pass".
-	Alternating step offsets add the light skill element: miss a hop and
-	you start the climb again.
 ]]
 local function createBoundaryWall(parent: Instance, worldIndex: number)
 	local world = GameConfig.worlds[worldIndex]
@@ -166,188 +392,190 @@ local function createBorders(parent: Instance)
 	end
 end
 
-local function createCrackWall(parent: Instance, positionZ: number, maxAllowedSize: number)
-	local openingWidth = 5
-	local openingHeight = 5
-	local wallHeight = 16
-	local sideWidth = (WorldLayout.width - openingWidth) / 2
+-- A raised side ledge with coins: the optional "extra route" that pays
+-- players for going out of their way.
+local function createCoinLedge(parent: Instance, worldIndex: number, minZ: number, sideX: number)
+	createPart({
+		Name = "LedgeStep",
+		Size = Vector3.new(10, 1, 8),
+		Position = Vector3.new(sideX, WorldLayout.baseY + 3, minZ + 150),
+		Color = STEP_COLOR,
+		Material = Enum.Material.SmoothPlastic,
+		Parent = parent,
+	})
 
-	for _, sideX in ipairs({ -(openingWidth + sideWidth) / 2, (openingWidth + sideWidth) / 2 }) do
+	createPart({
+		Name = "CoinLedge",
+		Size = Vector3.new(12, 1, 34),
+		Position = Vector3.new(sideX, WorldLayout.baseY + 6, minZ + 170),
+		Color = STEP_COLOR,
+		Material = Enum.Material.SmoothPlastic,
+		Parent = parent,
+	})
+
+	for offset = 0, 2 do
+		createCoin(parent, Vector3.new(sideX, 8, minZ + 160 + offset * 10), worldIndex)
+	end
+end
+
+local function buildWorldFlavor(parent: Instance, worldIndex: number, minZ: number)
+	if worldIndex == 2 then
+		-- The vent: a ceiling low enough that regrown players get stuck,
+		-- so the corridor itself enforces "stay small".
 		createPart({
-			Name = "CrackWall",
-			Size = Vector3.new(sideWidth, wallHeight, WALL_THICKNESS),
-			Position = Vector3.new(sideX, WorldLayout.baseY + wallHeight / 2, positionZ),
+			Name = "VentCeiling",
+			Size = Vector3.new(WorldLayout.width, 1, 26),
+			Position = Vector3.new(0, WorldLayout.baseY + 6.5, minZ + 123),
 			Color = WALL_COLOR,
+			Material = Enum.Material.DiamondPlate,
+			Parent = parent,
+		})
+		createPad(parent, "ShrinkPad", Vector3.new(0, 0.5, minZ + 123), SHRINK_PAD_COLOR)
+	elseif worldIndex == 3 then
+		for _, patch in ipairs({ { -14, 120 }, { 10, 128 }, { -6, 150 }, { 18, 158 }, { 0, 166 } }) do
+			local hazard = createPart({
+				Name = "Hazard",
+				Size = Vector3.new(12, 0.4, 12),
+				Position = Vector3.new(patch[1], WorldLayout.baseY + 0.3, minZ + patch[2]),
+				Color = HAZARD_COLOR,
+				Material = Enum.Material.Neon,
+				Parent = parent,
+			})
+			CollectionService:AddTag(hazard, "Hazard")
+		end
+
+		-- A fading-platform bridge to a bonus island: optional skill
+		-- content with a faster payoff.
+		for bridgeIndex = 1, 3 do
+			local platform = createPart({
+				Name = "FadingPlatform",
+				Size = Vector3.new(8, 1, 8),
+				Position = Vector3.new(
+					-34 + bridgeIndex * 9,
+					WorldLayout.baseY + 4 + bridgeIndex * 3,
+					minZ + 178
+				),
+				Color = STEP_COLOR,
+				Material = Enum.Material.SmoothPlastic,
+				Parent = parent,
+			})
+			CollectionService:AddTag(platform, "FadingPlatform")
+		end
+
+		createPart({
+			Name = "BonusIsland",
+			Size = Vector3.new(18, 2, 14),
+			Position = Vector3.new(6, WorldLayout.baseY + 15, minZ + 178),
+			Color = Color3.fromRGB(255, 159, 67),
 			Material = Enum.Material.Slate,
 			Parent = parent,
 		})
-	end
-
-	createPart({
-		Name = "CrackWallTop",
-		Size = Vector3.new(openingWidth, wallHeight - openingHeight, WALL_THICKNESS),
-		Position = Vector3.new(
-			0,
-			WorldLayout.baseY + openingHeight + (wallHeight - openingHeight) / 2,
-			positionZ
-		),
-		Color = WALL_COLOR,
-		Material = Enum.Material.Slate,
-		Parent = parent,
-	})
-
-	local crack = createPart({
-		Name = "SqueezeCrack",
-		Size = Vector3.new(openingWidth, openingHeight, WALL_THICKNESS),
-		Position = Vector3.new(0, WorldLayout.baseY + openingHeight / 2, positionZ),
-		Color = CRACK_COLOR,
-		Material = Enum.Material.ForceField,
-		Parent = parent,
-	})
-
-	crack:SetAttribute("MaxAllowedSize", maxAllowedSize)
-	CollectionService:AddTag(crack, "SqueezeCrack")
-end
-
-local function buildSproutMeadows(parent: Instance, minZ: number)
-	for _, padX in ipairs({ -16, 0, 16 }) do
-		createPad(parent, "GrowPad", Vector3.new(padX, 0.5, minZ + 45), GROW_PAD_COLOR)
-	end
-
-	createPad(parent, "GrowPad", Vector3.new(0, 0.5, minZ + 70), GROW_PAD_COLOR)
-end
-
-local function buildVentCity(parent: Instance, minZ: number)
-	createPad(parent, "ShrinkPad", Vector3.new(0, 0.5, minZ + 30), SHRINK_PAD_COLOR)
-	createCrackWall(parent, minZ + 45, 15)
-
-	-- The vent: a ceiling low enough that regrown players get stuck, so
-	-- the corridor itself enforces "stay small" with no scripting.
-	createPart({
-		Name = "VentCeiling",
-		Size = Vector3.new(WorldLayout.width, 1, 30),
-		Position = Vector3.new(0, WorldLayout.baseY + 6.5, minZ + 60),
-		Color = WALL_COLOR,
-		Material = Enum.Material.DiamondPlate,
-		Parent = parent,
-	})
-
-	createPad(parent, "ShrinkPad", Vector3.new(0, 0.5, minZ + 60), SHRINK_PAD_COLOR)
-
-	for _, padX in ipairs({ -16, 16 }) do
-		createPad(parent, "GrowPad", Vector3.new(padX, 0.5, minZ + 90), GROW_PAD_COLOR)
-	end
-end
-
-local function buildEmberFoundry(parent: Instance, minZ: number)
-	-- Hazard patches between the entry and the pads: route through them
-	-- while small, or around them while paying attention.
-	for _, patch in ipairs({ { -14, 40 }, { 10, 52 }, { -6, 64 }, { 18, 72 } }) do
-		local hazard = createPart({
-			Name = "Hazard",
-			Size = Vector3.new(12, 0.4, 12),
-			Position = Vector3.new(patch[1], WorldLayout.baseY + 0.3, minZ + patch[2]),
-			Color = HAZARD_COLOR,
+		createPad(parent, "GrowPad", Vector3.new(6, 16.5, minZ + 178), GROW_PAD_COLOR)
+	elseif worldIndex == 4 then
+		local bounce = createPart({
+			Name = "BouncePad",
+			Size = Vector3.new(10, 1, 10),
+			Position = Vector3.new(0, WorldLayout.baseY + 0.7, minZ + 150),
+			Color = BOUNCE_COLOR,
 			Material = Enum.Material.Neon,
 			Parent = parent,
 		})
+		CollectionService:AddTag(bounce, "BouncePad")
 
-		CollectionService:AddTag(hazard, "Hazard")
-	end
+		for stepIndex = 1, 3 do
+			local platform = createPart({
+				Name = "FadingPlatform",
+				Size = Vector3.new(9, 1, 9),
+				Position = Vector3.new(
+					stepIndex * 10 - 20,
+					WorldLayout.baseY + 12 + stepIndex * 4,
+					minZ + 158 + stepIndex * 6
+				),
+				Color = STEP_COLOR,
+				Material = Enum.Material.SmoothPlastic,
+				Parent = parent,
+			})
+			CollectionService:AddTag(platform, "FadingPlatform")
+		end
 
-	for _, padX in ipairs({ -20, 20 }) do
-		createPad(parent, "GrowPad", Vector3.new(padX, 0.5, minZ + 85), GROW_PAD_COLOR)
-	end
-
-	-- A fading-platform bridge up to a bonus island with a faster payoff:
-	-- pure optional skill content.
-	for bridgeIndex = 1, 3 do
-		local platform = createPart({
-			Name = "FadingPlatform",
-			Size = Vector3.new(8, 1, 8),
-			Position = Vector3.new(
-				-34 + bridgeIndex * 9,
-				WorldLayout.baseY + 4 + bridgeIndex * 3,
-				minZ + 100
-			),
-			Color = STEP_COLOR,
-			Material = Enum.Material.SmoothPlastic,
+		createPart({
+			Name = "SkyGarden",
+			Size = Vector3.new(30, 2, 24),
+			Position = Vector3.new(10, WorldLayout.baseY + 27, minZ + 185),
+			Color = Color3.fromRGB(190, 210, 255),
+			Material = Enum.Material.Slate,
 			Parent = parent,
 		})
-
-		CollectionService:AddTag(platform, "FadingPlatform")
+		for _, padX in ipairs({ 2, 18 }) do
+			createPad(parent, "GrowPad", Vector3.new(padX, 28.5, minZ + 185), GROW_PAD_COLOR)
+		end
 	end
-
-	createPart({
-		Name = "BonusIsland",
-		Size = Vector3.new(18, 2, 14),
-		Position = Vector3.new(6, WorldLayout.baseY + 15, minZ + 100),
-		Color = Color3.fromRGB(255, 159, 67),
-		Material = Enum.Material.Slate,
-		Parent = parent,
-	})
-
-	createPad(parent, "GrowPad", Vector3.new(6, 16.5, minZ + 100), GROW_PAD_COLOR)
 end
 
-local function buildCloudCapital(parent: Instance, minZ: number)
-	local bounce = createPart({
-		Name = "BouncePad",
-		Size = Vector3.new(10, 1, 10),
-		Position = Vector3.new(0, WorldLayout.baseY + 0.7, minZ + 35),
-		Color = BOUNCE_COLOR,
-		Material = Enum.Material.Neon,
-		Parent = parent,
-	})
-	CollectionService:AddTag(bounce, "BouncePad")
-
-	-- A fading staircase from the bounce apex to the sky garden.
-	for stepIndex = 1, 3 do
-		local platform = createPart({
-			Name = "FadingPlatform",
-			Size = Vector3.new(9, 1, 9),
-			Position = Vector3.new(
-				stepIndex * 10 - 20,
-				WorldLayout.baseY + 12 + stepIndex * 4,
-				minZ + 52 + stepIndex * 6
-			),
-			Color = STEP_COLOR,
-			Material = Enum.Material.SmoothPlastic,
-			Parent = parent,
-		})
-
-		CollectionService:AddTag(platform, "FadingPlatform")
-	end
+local function buildWorld(parent: Instance, worldIndex: number)
+	local world = GameConfig.worlds[worldIndex]
+	local minZ, maxZ = WorldLayout.boundsForWorld(worldIndex)
+	local floorColor = world.floorColor
 
 	createPart({
-		Name = "SkyGarden",
-		Size = Vector3.new(30, 2, 24),
-		Position = Vector3.new(10, WorldLayout.baseY + 27, minZ + 85),
-		Color = Color3.fromRGB(190, 210, 255),
-		Material = Enum.Material.Slate,
+		Name = "Floor",
+		Size = Vector3.new(WorldLayout.width, 1, WorldLayout.length),
+		Position = Vector3.new(0, WorldLayout.baseY - 0.5, (minZ + maxZ) / 2),
+		Color = Color3.fromRGB(floorColor[1], floorColor[2], floorColor[3]),
+		Material = Enum.Material.SmoothPlastic,
 		Parent = parent,
 	})
 
-	for _, padX in ipairs({ 2, 18 }) do
-		createPad(parent, "GrowPad", Vector3.new(padX, 28.5, minZ + 85), GROW_PAD_COLOR)
+	-- Plaza: portal, egg capsule, station, and (every Nth world) the
+	-- Mystery Machine.
+	createPortal(parent, worldIndex, minZ)
+	createEggStand(parent, worldIndex, minZ)
+	createStation(parent, worldIndex, minZ)
+	if worldIndex % GameConfig.economy.mysteryMachineEveryNWorlds == 0 then
+		createMysteryMachine(parent, worldIndex, minZ)
 	end
 
-	createPart({
-		Name = "RebirthPodium",
-		Size = Vector3.new(14, 3, 14),
-		Position = Vector3.new(0, WorldLayout.baseY + 1.5, minZ + 105),
-		Color = Color3.fromRGB(253, 203, 110),
-		Material = Enum.Material.Marble,
-		Parent = parent,
-	})
+	-- Section A -- grow: pads, a few coins, then a gate that demands
+	-- real growth for this world.
+	for _, padX in ipairs({ -16, 0, 16 }) do
+		createPad(parent, "GrowPad", Vector3.new(padX, 0.5, minZ + 52), GROW_PAD_COLOR)
+	end
+	for _, coinX in ipairs({ -30, 30 }) do
+		createCoin(parent, Vector3.new(coinX, 2, minZ + 60), worldIndex)
+	end
+	createBarrierWall(
+		parent,
+		minZ + 80,
+		16,
+		12 + worldIndex * 3,
+		"SizeGate",
+		"RequiredSize",
+		world.gateRequiredSize,
+		GATE_COLOR
+	)
+	createCheckpoint(parent, worldIndex, 1, Vector3.new(0, 0.5, minZ + 88))
+
+	-- Section B -- shrink: a shrink pad, a crack, and world flavor that
+	-- punishes staying big.
+	createPad(parent, "ShrinkPad", Vector3.new(0, 0.5, minZ + 96), SHRINK_PAD_COLOR)
+	createBarrierWall(parent, minZ + 110, 5, 5, "SqueezeCrack", "MaxAllowedSize", 15, CRACK_COLOR)
+	createCheckpoint(parent, worldIndex, 2, Vector3.new(0, 0.5, minZ + 140))
+
+	-- Section C -- skill and payout: flavor obstacles, the coin ledge,
+	-- and pads to get big for the exit wall.
+	buildWorldFlavor(parent, worldIndex, minZ)
+	createCoinLedge(parent, worldIndex, minZ, if worldIndex % 2 == 0 then 44 else -44)
+	for _, coinZ in ipairs({ 148, 156, 164 }) do
+		createCoin(parent, Vector3.new(-24, 2, minZ + coinZ), worldIndex)
+	end
+	for _, padX in ipairs({ -12, 12 }) do
+		createPad(parent, "GrowPad", Vector3.new(padX, 0.5, minZ + 188), GROW_PAD_COLOR)
+	end
+
+	if world.exitWallHeight ~= nil then
+		createBoundaryWall(parent, worldIndex)
+	end
 end
-
-local WORLD_BUILDERS = {
-	buildSproutMeadows,
-	buildVentCity,
-	buildEmberFoundry,
-	buildCloudCapital,
-}
 
 --[[
 	Sunny late-afternoon sky with real clouds and light haze. Everything
@@ -413,27 +641,12 @@ function MapGenerator.generate()
 	local map = Instance.new("Folder")
 	map.Name = "GeneratedMap"
 
-	for worldIndex, world in ipairs(GameConfig.worlds) do
-		local minZ, maxZ = WorldLayout.boundsForWorld(worldIndex)
-		local floorColor = world.floorColor
-
-		createPart({
-			Name = "Floor",
-			Size = Vector3.new(WorldLayout.width, 1, WorldLayout.length),
-			Position = Vector3.new(0, WorldLayout.baseY - 0.5, (minZ + maxZ) / 2),
-			Color = Color3.fromRGB(floorColor[1], floorColor[2], floorColor[3]),
-			Material = Enum.Material.SmoothPlastic,
-			Parent = map,
-		})
-
-		createPortal(map, worldIndex)
-		WORLD_BUILDERS[worldIndex](map, minZ)
-
-		if world.exitWallHeight ~= nil then
-			createBoundaryWall(map, worldIndex)
-		end
+	for worldIndex in ipairs(GameConfig.worlds) do
+		buildWorld(map, worldIndex)
 	end
 
+	local firstMinZ = WorldLayout.boundsForWorld(1)
+	createLimitedDisplay(map, firstMinZ)
 	createBorders(map)
 
 	local spawnPosition = WorldLayout.spawnPositionForWorld(1)

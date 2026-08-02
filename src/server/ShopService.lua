@@ -20,8 +20,10 @@ local GameConfig = require(Shared.GameConfig)
 local VIP_TRAIL_COLOR = Color3.fromRGB(253, 203, 110)
 
 -- Injected by init.server.lua so this module never has to require
--- SizeService (which requires this module).
+-- SizeService or PetService (SizeService requires this module).
 local grantMaxSize: (Player, number) -> () = function() end
+local grantRobuxEggPet: (Player, number) -> () = function() end
+local grantLimitedPet: (Player) -> () = function() end
 
 local ShopService = {}
 
@@ -35,14 +37,23 @@ local function passKeyForId(gamePassId: number): string?
 	return nil
 end
 
-local function productForId(productId: number): { [string]: any }?
-	for _, world in ipairs(GameConfig.worlds) do
+-- Developer products come in three kinds; the receipt handler needs to
+-- know which family an ID belongs to.
+local function productForId(productId: number): ({ [string]: any }?, string?, number?)
+	for worldIndex, world in ipairs(GameConfig.worlds) do
 		if world.cityProduct.productId == productId then
-			return world.cityProduct
+			return world.cityProduct, "city", worldIndex
+		end
+		if world.robuxEgg.productId == productId then
+			return world.robuxEgg, "egg", worldIndex
 		end
 	end
 
-	return nil
+	if GameConfig.limitedPet.productId == productId then
+		return GameConfig.limitedPet, "limited", nil
+	end
+
+	return nil, nil, nil
 end
 
 local function applyVipTrail(character: Model)
@@ -135,7 +146,7 @@ local function processReceipt(receiptInfo: { [string]: any }): Enum.ProductPurch
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	local product = productForId(receiptInfo.ProductId)
+	local product, kind, worldIndex = productForId(receiptInfo.ProductId)
 	if product == nil then
 		-- An ID we do not recognize means the config and the website
 		-- disagree. Granting closes the receipt: retrying forever would
@@ -144,13 +155,25 @@ local function processReceipt(receiptInfo: { [string]: any }): Enum.ProductPurch
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
 
-	grantProduct(player, product)
+	if kind == "city" then
+		grantProduct(player, product)
+	elseif kind == "egg" then
+		grantRobuxEggPet(player, worldIndex :: number)
+	elseif kind == "limited" then
+		grantLimitedPet(player)
+	end
 
 	return Enum.ProductPurchaseDecision.PurchaseGranted
 end
 
-function ShopService.start(dependencies: { grantMaxSize: (Player, number) -> () })
+function ShopService.start(dependencies: {
+	grantMaxSize: (Player, number) -> (),
+	grantRobuxEggPet: (Player, number) -> (),
+	grantLimitedPet: (Player) -> (),
+})
 	grantMaxSize = dependencies.grantMaxSize
+	grantRobuxEggPet = dependencies.grantRobuxEggPet
+	grantLimitedPet = dependencies.grantLimitedPet
 
 	MarketplaceService.ProcessReceipt = processReceipt
 

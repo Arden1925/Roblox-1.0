@@ -10,8 +10,16 @@ local FOLDER_NAME = "Remotes"
 
 local REMOTE_CLASS_BY_NAME = {
 	AttemptRebirth = "RemoteFunction",
+	BuyPotion = "RemoteFunction",
+	BuyUpgrade = "RemoteFunction",
+	EquipPet = "RemoteFunction",
+	HatchEgg = "RemoteFunction",
+	MarkTutorialDone = "RemoteEvent",
 	RequestInstantShrink = "RemoteEvent",
 	RequestTeleport = "RemoteFunction",
+	SetDesiredSize = "RemoteEvent",
+	SetDesiredSpeed = "RemoteEvent",
+	UseMysteryMachine = "RemoteFunction",
 }
 
 local Remotes = {}
