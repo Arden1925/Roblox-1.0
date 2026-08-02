@@ -157,6 +157,9 @@ local function applyCharacterScale(player: Player, state: PlayerState)
 	local jumpBonus = if ShopService.effectActive(player, "CloudBoots")
 		then 1 + GameConfig.passEffects.cloudBootsJumpBonus
 		else 1
+	if ShopService.effectActive(player, "JumpPotion") then
+		jumpBonus *= 1.25
+	end
 	if JUMP_UPGRADE ~= nil then
 		local level = attributeNumber(player, "UpgradeJumpUpgrade")
 		jumpBonus *= 1 + level * JUMP_UPGRADE.bonusPerLevel

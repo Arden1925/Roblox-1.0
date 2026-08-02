@@ -12,12 +12,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local Client = script.Parent
+local PetViewport = require(Client.PetViewport)
 local Toast = require(Client.Toast)
 local UiBuilder = require(Client.UiBuilder)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local GameConfig = require(Shared.GameConfig)
 local PetCatalog = require(Shared.PetCatalog)
+local PetModels = require(Shared.PetModels)
 local Remotes = require(Shared.Remotes)
 
 local PANEL_COLOR = Color3.fromRGB(24, 30, 38)
@@ -35,7 +37,7 @@ local function buildPetRow(parent: Instance, order: number, info: PetCatalog.Pet
 	local row = UiBuilder.create("Frame", {
 		Name = info.id,
 		LayoutOrder = order,
-		Size = UDim2.new(1, -12, 0, 40),
+		Size = UDim2.new(1, -12, 0, 42),
 		BackgroundColor3 = CARD_COLOR,
 		BorderSizePixel = 0,
 		Parent = parent,
@@ -43,14 +45,17 @@ local function buildPetRow(parent: Instance, order: number, info: PetCatalog.Pet
 	UiBuilder.round(row, 8)
 	UiBuilder.stroke(row, info.tierColor, 1)
 
+	-- A live 3D thumbnail beats a colored square for "what can I get".
+	PetViewport.create(row, info.id, UDim2.new(0, 36, 0, 36), UDim2.new(0, 4, 0, 3))
+
 	UiBuilder.create("TextLabel", {
-		Position = UDim2.new(0, 10, 0, 0),
-		Size = UDim2.new(0.6, 0, 1, 0),
+		Position = UDim2.new(0, 46, 0, 0),
+		Size = UDim2.new(0.55, 0, 1, 0),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
 		Text = string.format("%s (%s)", info.name, info.tierName),
 		TextColor3 = info.tierColor,
-		TextSize = 15,
+		TextSize = 14,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = row,
 	})
@@ -103,10 +108,48 @@ local function playReveal(window: Frame, petId: string)
 	shake.Completed:Connect(function()
 		egg.Visible = false
 
-		local reveal = UiBuilder.create("TextLabel", {
+		-- Burst: two rings of the pet's color expanding out of the egg.
+		for ringIndex = 1, 2 do
+			local ring = UiBuilder.create("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(0.5, 0, 0.42, 0),
+				Size = UDim2.new(0, 20, 0, 20),
+				BackgroundTransparency = 1,
+				ZIndex = 6,
+				Parent = overlay,
+			})
+			UiBuilder.round(ring, 200)
+			local ringStroke = UiBuilder.stroke(ring, info.tierColor, 4)
+
+			local burst = TweenService:Create(
+				ring,
+				TweenInfo.new(0.6 + ringIndex * 0.2, Enum.EasingStyle.Quad),
+				{ Size = UDim2.new(0, 260 + ringIndex * 80, 0, 260 + ringIndex * 80) }
+			)
+			burst:Play()
+			TweenService:Create(
+				ringStroke,
+				TweenInfo.new(0.6 + ringIndex * 0.2, Enum.EasingStyle.Quad),
+				{ Transparency = 1 }
+			):Play()
+		end
+
+		-- The pet itself, in 3D, spinning fast out of the shell.
+		local viewportHolder = UiBuilder.create("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.45, 0),
-			Size = UDim2.new(0, 300, 0, 90),
+			Position = UDim2.new(0.5, 0, 0.38, 0),
+			Size = UDim2.new(0, 170, 0, 170),
+			BackgroundTransparency = 1,
+			ZIndex = 7,
+			Parent = overlay,
+		})
+		PetViewport.create(viewportHolder, petId, UDim2.new(1, 0, 1, 0), UDim2.new(0, 0, 0, 0), 4)
+		UiBuilder.popOpen(viewportHolder)
+
+		local reveal = UiBuilder.create("TextLabel", {
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0.62, 0),
+			Size = UDim2.new(0, 320, 0, 80),
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBlack,
 			Text = string.format(
@@ -118,12 +161,17 @@ local function playReveal(window: Frame, petId: string)
 			TextColor3 = info.tierColor,
 			TextSize = 26,
 			TextWrapped = true,
-			ZIndex = 6,
+			ZIndex = 7,
 			Parent = overlay,
-		})
+		}) :: TextLabel
+
+		-- Top tiers get the full rainbow-shine treatment.
+		if PetModels.tierRank(info.tierName) >= 5 then
+			UiBuilder.shineText(reveal)
+		end
 
 		UiBuilder.popOpen(reveal)
-		task.delay(2, function()
+		task.delay(2.6, function()
 			overlay:Destroy()
 		end)
 	end)

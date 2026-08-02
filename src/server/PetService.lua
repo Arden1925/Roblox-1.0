@@ -15,12 +15,13 @@ local EconomyService = require(Server.EconomyService)
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
 local PetCatalog = require(Shared.PetCatalog)
+local PetModels = require(Shared.PetModels)
 
 local FOLLOW_OFFSET = Vector3.new(3.5, 2, 2)
 
 local petsByPlayer: { [Player]: { string } } = {}
 local equippedByPlayer: { [Player]: string } = {}
-local followerByPlayer: { [Player]: BasePart } = {}
+local followerByPlayer: { [Player]: Model } = {}
 
 local PetService = {}
 
@@ -40,6 +41,11 @@ local function destroyFollower(player: Player)
 	end
 end
 
+--[[
+	Spawns the pet's real model beside its owner: every part welded to
+	the body, unanchored and massless, with the body steered by physics
+	constraints so the pet trails naturally as the player moves.
+]]
 local function createFollower(player: Player, petId: string)
 	destroyFollower(player)
 
@@ -54,19 +60,31 @@ local function createFollower(player: Player, petId: string)
 		return
 	end
 
-	local follower = Instance.new("Part")
-	follower.Name = "PetFollower"
-	follower.Shape = Enum.PartType.Ball
-	follower.Size = Vector3.new(1.6, 1.6, 1.6)
-	follower.Color = info.tierColor
-	follower.Material = Enum.Material.Neon
-	follower.CanCollide = false
-	follower.CanQuery = false
-	follower.Massless = true
-	follower.CFrame = rootPart.CFrame * CFrame.new(FOLLOW_OFFSET)
+	local model = PetModels.build(petId)
+	if model == nil then
+		return
+	end
+
+	local body = model.PrimaryPart :: BasePart
+	model.Name = "PetFollower"
+	model:PivotTo(rootPart.CFrame * CFrame.new(FOLLOW_OFFSET))
+
+	for _, part in ipairs(model:GetDescendants()) do
+		if part:IsA("BasePart") then
+			if part ~= body then
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = body
+				weld.Part1 = part
+				weld.Parent = part
+			end
+
+			part.Anchored = false
+			part.Massless = true
+		end
+	end
 
 	local attachment = Instance.new("Attachment")
-	attachment.Parent = follower
+	attachment.Parent = body
 
 	local characterAttachment = Instance.new("Attachment")
 	characterAttachment.Name = "PetAnchor"
@@ -78,20 +96,21 @@ local function createFollower(player: Player, petId: string)
 	alignPosition.Attachment1 = characterAttachment
 	alignPosition.MaxForce = 40000
 	alignPosition.Responsiveness = 12
-	alignPosition.Parent = follower
+	alignPosition.Parent = body
 
 	local alignOrientation = Instance.new("AlignOrientation")
 	alignOrientation.Attachment0 = attachment
 	alignOrientation.Attachment1 = characterAttachment
 	alignOrientation.MaxTorque = 40000
 	alignOrientation.Responsiveness = 12
-	alignOrientation.Parent = follower
+	alignOrientation.Parent = body
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Size = UDim2.new(0, 120, 0, 34)
-	billboard.StudsOffset = Vector3.new(0, 1.6, 0)
+	billboard.StudsOffset = Vector3.new(0, 2, 0)
 	billboard.AlwaysOnTop = false
-	billboard.Parent = follower
+	billboard.MaxDistance = 45
+	billboard.Parent = body
 
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.Size = UDim2.new(1, 0, 1, 0)
@@ -103,8 +122,8 @@ local function createFollower(player: Player, petId: string)
 	nameLabel.TextSize = 12
 	nameLabel.Parent = billboard
 
-	follower.Parent = character
-	followerByPlayer[player] = follower
+	model.Parent = character
+	followerByPlayer[player] = model
 end
 
 function PetService.grantPet(player: Player, petId: string)

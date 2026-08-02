@@ -33,7 +33,8 @@ local BOUNCE_COLOR = Color3.fromRGB(255, 121, 198)
 local WALL_COLOR = Color3.fromRGB(87, 96, 111)
 local BORDER_COLOR = Color3.fromRGB(47, 54, 64)
 local STEP_COLOR = Color3.fromRGB(223, 228, 234)
-local PORTAL_COLOR = Color3.fromRGB(156, 136, 255)
+-- Portal-gun green, per the reference everyone knows.
+local PORTAL_COLOR = Color3.fromRGB(97, 255, 66)
 local COIN_COLOR = Color3.fromRGB(253, 203, 110)
 local CHECKPOINT_COLOR = Color3.fromRGB(0, 206, 201)
 
@@ -71,7 +72,9 @@ local function addBillboard(part: BasePart, text: string, color: Color3, offsetY
 	billboard.Size = UDim2.new(0, 220, 0, 60)
 	billboard.StudsOffsetWorldSpace = Vector3.new(0, offsetY, 0)
 	billboard.AlwaysOnTop = false
-	billboard.MaxDistance = 90
+	-- Titles face you while you are near, then stop following: past this
+	-- distance the label simply is not drawn.
+	billboard.MaxDistance = 45
 	billboard.Parent = part
 
 	local label = Instance.new("TextLabel")
@@ -85,6 +88,42 @@ local function addBillboard(part: BasePart, text: string, color: Color3, offsetY
 	label.TextWrapped = true
 	label.Parent = billboard
 end
+
+-- The "physical outline" on interactables: a glowing edge players spot
+-- from across the world, even partly through obstacles.
+local function addOutline(part: BasePart, color: Color3)
+	local highlight = Instance.new("Highlight")
+	highlight.FillTransparency = 1
+	highlight.OutlineColor = color
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = part
+end
+
+-- Per-world identity used by the egg capsules and decorations, so every
+-- world reads as its own place the moment you walk in.
+local WORLD_THEMES = {
+	{
+		eggMaterial = Enum.Material.Grass,
+		accent = Color3.fromRGB(120, 224, 76),
+		pedestalColor = Color3.fromRGB(88, 62, 41),
+	},
+	{
+		eggMaterial = Enum.Material.DiamondPlate,
+		accent = Color3.fromRGB(116, 185, 255),
+		pedestalColor = Color3.fromRGB(99, 110, 114),
+	},
+	{
+		eggMaterial = Enum.Material.CrackedLava,
+		accent = Color3.fromRGB(255, 118, 33),
+		pedestalColor = Color3.fromRGB(45, 45, 45),
+	},
+	{
+		eggMaterial = Enum.Material.Ice,
+		accent = Color3.fromRGB(224, 238, 255),
+		pedestalColor = Color3.fromRGB(190, 210, 255),
+	},
+}
 
 local function createPad(parent: Instance, tag: string, position: Vector3, color: Color3)
 	local pad = createPart({
@@ -137,29 +176,56 @@ local function createCheckpoint(
 	addBillboard(checkpoint, "CHECKPOINT", CHECKPOINT_COLOR, 5)
 end
 
+--[[
+	The portal proper is a flat green disc; the swirling rings and
+	particles around it are drawn client-side by PortalFx so every player
+	gets the full effect at local-only cost.
+]]
 local function createPortal(parent: Instance, worldIndex: number, minZ: number)
 	local portal = createPart({
 		Name = "Portal",
-		Size = Vector3.new(1.5, 12, 8),
-		Position = Vector3.new(-46, WorldLayout.baseY + 6, minZ + 20),
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(1, 13, 13),
+		CFrame = CFrame.new(-44, WorldLayout.baseY + 7, minZ + 20)
+			* CFrame.Angles(0, 0, math.rad(90))
+			* CFrame.Angles(math.rad(90), 0, 0),
 		Color = PORTAL_COLOR,
-		Material = Enum.Material.ForceField,
+		Material = Enum.Material.Neon,
+		Transparency = 0.15,
+		CanCollide = false,
 		Parent = parent,
 	})
 
 	addPrompt(portal, "Open Portal", "World Portal")
+	addOutline(portal, Color3.fromRGB(160, 255, 130))
+	addBillboard(portal, "PORTAL", Color3.fromRGB(160, 255, 130), 9)
 	CollectionService:AddTag(portal, "Portal")
 end
 
 local function createEggStand(parent: Instance, worldIndex: number, minZ: number)
 	local world = GameConfig.worlds[worldIndex]
+	local theme = WORLD_THEMES[worldIndex]
+	local center = Vector3.new(42, WorldLayout.baseY, minZ + 22)
 
 	local pedestal = createPart({
 		Name = "EggStand",
 		Size = Vector3.new(6, 2, 6),
-		Position = Vector3.new(42, WorldLayout.baseY + 1, minZ + 22),
-		Color = Color3.fromRGB(99, 110, 114),
+		Position = center + Vector3.new(0, 1, 0),
+		Color = theme.pedestalColor,
 		Material = Enum.Material.Marble,
+		Parent = parent,
+	})
+
+	-- A themed ring around the base sells each capsule as belonging to
+	-- its world at a glance.
+	createPart({
+		Name = "EggRing",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.4, 9, 9),
+		CFrame = CFrame.new(center + Vector3.new(0, 0.3, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Color = theme.accent,
+		Material = Enum.Material.Neon,
+		CanCollide = false,
 		Parent = parent,
 	})
 
@@ -167,8 +233,7 @@ local function createEggStand(parent: Instance, worldIndex: number, minZ: number
 		Name = "EggCapsule",
 		Shape = Enum.PartType.Cylinder,
 		Size = Vector3.new(9, 7, 7),
-		CFrame = CFrame.new(42, WorldLayout.baseY + 6.5, minZ + 22)
-			* CFrame.Angles(0, 0, math.rad(90)),
+		CFrame = CFrame.new(center + Vector3.new(0, 6.5, 0)) * CFrame.Angles(0, 0, math.rad(90)),
 		Color = Color3.fromRGB(223, 249, 251),
 		Material = Enum.Material.Glass,
 		Transparency = 0.6,
@@ -180,9 +245,9 @@ local function createEggStand(parent: Instance, worldIndex: number, minZ: number
 		Name = "EggOrb",
 		Shape = Enum.PartType.Ball,
 		Size = Vector3.new(3.4, 3.4, 3.4),
-		Position = Vector3.new(42, WorldLayout.baseY + 6.5, minZ + 22),
-		Color = Color3.fromRGB(world.floorColor[1], world.floorColor[2], world.floorColor[3]),
-		Material = Enum.Material.Neon,
+		Position = center + Vector3.new(0, 6.5, 0),
+		Color = theme.accent,
+		Material = theme.eggMaterial,
 		CanCollide = false,
 		Parent = parent,
 	})
@@ -190,7 +255,10 @@ local function createEggStand(parent: Instance, worldIndex: number, minZ: number
 
 	pedestal:SetAttribute("WorldIndex", worldIndex)
 	addPrompt(pedestal, "View Eggs", world.eggName)
-	addBillboard(pedestal, world.eggName, Color3.fromRGB(255, 255, 255), 10)
+	-- Well above the capsule top (~10 studs) so the title never clips
+	-- into the glass or the egg.
+	addBillboard(pedestal, world.eggName, theme.accent, 14)
+	addOutline(pedestal, theme.accent)
 	CollectionService:AddTag(pedestal, "EggStand")
 end
 
@@ -206,7 +274,8 @@ local function createStation(parent: Instance, worldIndex: number, minZ: number)
 
 	station:SetAttribute("WorldIndex", worldIndex)
 	addPrompt(station, "Open Station", "Potions & Upgrades")
-	addBillboard(station, "STATION", Color3.fromRGB(255, 255, 255), 6)
+	addBillboard(station, "STATION", Color3.fromRGB(129, 236, 236), 6)
+	addOutline(station, Color3.fromRGB(129, 236, 236))
 	CollectionService:AddTag(station, "ShopStation")
 end
 
@@ -223,6 +292,7 @@ local function createMysteryMachine(parent: Instance, worldIndex: number, minZ: 
 	machine:SetAttribute("WorldIndex", worldIndex)
 	addPrompt(machine, "Insert Coins", "Mystery Machine")
 	addBillboard(machine, "MYSTERY MACHINE", Color3.fromRGB(255, 121, 198), 7)
+	addOutline(machine, Color3.fromRGB(255, 121, 198))
 	CollectionService:AddTag(machine, "MysteryMachine")
 end
 
@@ -256,6 +326,7 @@ local function createLimitedDisplay(parent: Instance, minZ: number)
 		Color3.fromRGB(255, 234, 167),
 		9
 	)
+	addOutline(pedestal, Color3.fromRGB(255, 234, 167))
 	CollectionService:AddTag(pedestal, "LimitedDisplay")
 end
 
@@ -380,15 +451,151 @@ local function createBorders(parent: Instance)
 	}
 
 	for _, border in ipairs(borders) do
+		-- Fully solid: the world should feel like a place, not a fish
+		-- tank with visible outside.
 		createPart({
 			Name = "Border",
 			Size = border.size,
 			Position = border.position + Vector3.new(0, WorldLayout.baseY, 0),
 			Color = BORDER_COLOR,
 			Material = Enum.Material.Slate,
-			Transparency = 0.35,
 			Parent = parent,
 		})
+
+		-- A glowing trim line breaks up the tall dark faces.
+		local trimSize = if border.size.X > border.size.Z
+			then Vector3.new(border.size.X, 0.8, border.size.Z + 0.4)
+			else Vector3.new(border.size.X + 0.4, 0.8, border.size.Z)
+
+		createPart({
+			Name = "BorderTrim",
+			Size = trimSize,
+			Position = border.position
+				+ Vector3.new(0, WorldLayout.baseY + 14 - border.size.Y / 2, 0),
+			Color = Color3.fromRGB(0, 206, 201),
+			Material = Enum.Material.Neon,
+			CanCollide = false,
+			Parent = parent,
+		})
+	end
+end
+
+--[[
+	Per-world scenery so each world has its own vibe the moment you walk
+	in: a meadow with trees and flowers, an industrial pipe yard, a
+	glowing foundry, and a sky garden among clouds. Pure decoration --
+	nothing here is tagged, so gameplay is untouched.
+]]
+local function createWorldDecor(parent: Instance, worldIndex: number, minZ: number)
+	if worldIndex == 1 then
+		for _, spot in ipairs({ { -36, 60 }, { 34, 100 }, { -30, 170 }, { 38, 150 } }) do
+			createPart({
+				Name = "TreeTrunk",
+				Shape = Enum.PartType.Cylinder,
+				Size = Vector3.new(7, 2, 2),
+				CFrame = CFrame.new(spot[1], WorldLayout.baseY + 3.5, minZ + spot[2])
+					* CFrame.Angles(0, 0, math.rad(90)),
+				Color = Color3.fromRGB(110, 80, 48),
+				Material = Enum.Material.Wood,
+				Parent = parent,
+			})
+
+			createPart({
+				Name = "TreeLeaves",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.new(7, 7, 7),
+				Position = Vector3.new(spot[1], WorldLayout.baseY + 9, minZ + spot[2]),
+				Color = Color3.fromRGB(88, 190, 60),
+				Material = Enum.Material.Grass,
+				CanCollide = false,
+				Parent = parent,
+			})
+		end
+
+		for _, spot in ipairs({ { -20, 35 }, { 24, 70 }, { -8, 130 }, { 12, 165 } }) do
+			createPart({
+				Name = "Flower",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.new(1, 1, 1),
+				Position = Vector3.new(spot[1], WorldLayout.baseY + 0.5, minZ + spot[2]),
+				Color = Color3.fromRGB(255, 121, 198),
+				Material = Enum.Material.Neon,
+				CanCollide = false,
+				Parent = parent,
+			})
+		end
+	elseif worldIndex == 2 then
+		for _, spot in ipairs({ { -34, 55 }, { 34, 130 }, { -30, 175 } }) do
+			for sideOffset = -4, 4, 8 do
+				createPart({
+					Name = "PipeLeg",
+					Shape = Enum.PartType.Cylinder,
+					Size = Vector3.new(12, 2, 2),
+					CFrame = CFrame.new(
+						spot[1] + sideOffset,
+						WorldLayout.baseY + 6,
+						minZ + spot[2]
+					) * CFrame.Angles(0, 0, math.rad(90)),
+					Color = Color3.fromRGB(120, 130, 140),
+					Material = Enum.Material.Metal,
+					Parent = parent,
+				})
+			end
+
+			createPart({
+				Name = "PipeTop",
+				Shape = Enum.PartType.Cylinder,
+				Size = Vector3.new(10, 2.4, 2.4),
+				CFrame = CFrame.new(spot[1], WorldLayout.baseY + 12, minZ + spot[2]),
+				Color = Color3.fromRGB(99, 110, 114),
+				Material = Enum.Material.CorrodedMetal,
+				Parent = parent,
+			})
+		end
+	elseif worldIndex == 3 then
+		for _, spot in ipairs({ { -36, 45 }, { 36, 95 }, { -34, 185 } }) do
+			createPart({
+				Name = "LavaPool",
+				Shape = Enum.PartType.Cylinder,
+				Size = Vector3.new(0.4, 10, 10),
+				CFrame = CFrame.new(spot[1], WorldLayout.baseY + 0.2, minZ + spot[2])
+					* CFrame.Angles(0, 0, math.rad(90)),
+				Color = Color3.fromRGB(255, 118, 33),
+				Material = Enum.Material.Neon,
+				CanCollide = false,
+				Parent = parent,
+			})
+		end
+
+		for _, spot in ipairs({ { -40, 70 }, { 40, 150 } }) do
+			createPart({
+				Name = "FoundryPillar",
+				Size = Vector3.new(4, 18, 4),
+				Position = Vector3.new(spot[1], WorldLayout.baseY + 9, minZ + spot[2]),
+				Color = Color3.fromRGB(45, 45, 45),
+				Material = Enum.Material.Basalt,
+				Parent = parent,
+			})
+		end
+	elseif worldIndex == 4 then
+		for _, spot in ipairs({ { -30, 50, 14 }, { 32, 90, 18 }, { -26, 160, 22 } }) do
+			for puffOffset = -3, 3, 3 do
+				createPart({
+					Name = "CloudPuff",
+					Shape = Enum.PartType.Ball,
+					Size = Vector3.new(6, 5, 5),
+					Position = Vector3.new(
+						spot[1] + puffOffset,
+						WorldLayout.baseY + spot[3],
+						minZ + spot[2]
+					),
+					Color = Color3.fromRGB(245, 246, 250),
+					Material = Enum.Material.SmoothPlastic,
+					CanCollide = false,
+					Parent = parent,
+				})
+			end
+		end
 	end
 end
 
@@ -531,6 +738,7 @@ local function buildWorld(parent: Instance, worldIndex: number)
 	createPortal(parent, worldIndex, minZ)
 	createEggStand(parent, worldIndex, minZ)
 	createStation(parent, worldIndex, minZ)
+	createWorldDecor(parent, worldIndex, minZ)
 	if worldIndex % GameConfig.economy.mysteryMachineEveryNWorlds == 0 then
 		createMysteryMachine(parent, worldIndex, minZ)
 	end

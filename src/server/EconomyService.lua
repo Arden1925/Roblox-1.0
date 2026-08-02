@@ -72,8 +72,8 @@ function EconomyService.upgradeCost(player: Player, upgradeKey: string): number?
 end
 
 --[[
-	All coin income funnels through here so Coin Magnet applies
-	everywhere without every caller remembering it.
+	All coin income funnels through here so Coin Magnet and the Coin
+	Potion apply everywhere without every caller remembering them.
 ]]
 function EconomyService.awardCoins(player: Player, baseAmount: number)
 	if coinsByPlayer[player] == nil then
@@ -84,7 +84,11 @@ function EconomyService.awardCoins(player: Player, baseAmount: number)
 	local bonusPerLevel = if upgrade ~= nil then upgrade.bonusPerLevel else 0
 	local magnet = 1 + EconomyService.upgradeLevel(player, "CoinUpgrade") * bonusPerLevel
 
-	coinsByPlayer[player] += baseAmount * magnet
+	local potionUntil = player:GetAttribute("CoinPotionUntil")
+	local doubled = typeof(potionUntil) == "number" and potionUntil > Workspace:GetServerTimeNow()
+	local potionMultiplier = if doubled then 2 else 1
+
+	coinsByPlayer[player] += baseAmount * magnet * potionMultiplier
 	publishCoins(player)
 end
 

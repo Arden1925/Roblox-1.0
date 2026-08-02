@@ -95,6 +95,24 @@ local GameConfig = {
 			effectKey = "SpeedPotion",
 			durationSeconds = 300,
 		},
+		{
+			key = "JumpPotion",
+			name = "Jump Potion",
+			description = "Jump 25% higher for 5 minutes.",
+			baseCost = 50,
+			effect = "timed",
+			effectKey = "JumpPotion",
+			durationSeconds = 300,
+		},
+		{
+			key = "CoinPotion",
+			name = "Coin Potion",
+			description = "Double all coins you earn for 5 minutes.",
+			baseCost = 120,
+			effect = "timed",
+			effectKey = "CoinPotion",
+			durationSeconds = 300,
+		},
 	},
 
 	-- Permanent coin-bought upgrades; cost rises every level so coins

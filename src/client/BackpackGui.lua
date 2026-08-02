@@ -12,15 +12,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Client = script.Parent
+local PetViewport = require(Client.PetViewport)
 local Toast = require(Client.Toast)
 local UiBuilder = require(Client.UiBuilder)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local GameConfig = require(Shared.GameConfig)
 local PetCatalog = require(Shared.PetCatalog)
+local PetModels = require(Shared.PetModels)
 local Remotes = require(Shared.Remotes)
 
-local PANEL_COLOR = Color3.fromRGB(24, 30, 38)
 local CARD_COLOR = Color3.fromRGB(47, 54, 64)
 local ACCENT_COLOR = Color3.fromRGB(255, 121, 198)
 local EQUIPPED_COLOR = Color3.fromRGB(76, 209, 55)
@@ -38,6 +39,8 @@ local function timedEffectLines(): { string }
 	for _, effectKey in ipairs({
 		"GrowthPotion",
 		"SpeedPotion",
+		"JumpPotion",
+		"CoinPotion",
 		"VentGrease",
 		"EmberShield",
 		"CloudBoots",
@@ -82,49 +85,86 @@ local function fillPetsTab(page: ScrollingFrame)
 		end
 
 		local isEquipped = petId == equipped
+		local rank = PetModels.tierRank(info.tierName)
 
+		-- Every card gets the same outline treatment (thickness 2, tier
+		-- color; green when equipped) so the grid reads as one set.
 		local card = UiBuilder.create("Frame", {
 			Name = petId,
 			LayoutOrder = if isEquipped then 0 else order,
-			Size = UDim2.new(0, 150, 0, 150),
+			Size = UDim2.new(0, 150, 0, 196),
 			BackgroundColor3 = CARD_COLOR,
+			BackgroundTransparency = 0.1,
 			BorderSizePixel = 0,
+			ClipsDescendants = true,
 			Parent = page,
 		})
 		UiBuilder.round(card, 12)
-		UiBuilder.gradient(card, info.tierColor, CARD_COLOR)
-		UiBuilder.stroke(card, if isEquipped then EQUIPPED_COLOR else info.tierColor, 2)
 
-		UiBuilder.create("TextLabel", {
+		local cardStroke =
+			UiBuilder.stroke(card, if isEquipped then EQUIPPED_COLOR else info.tierColor, 2)
+
+		-- Hard-to-get tiers announce themselves: a breathing aura stroke,
+		-- and rainbow shine on the very top tier.
+		if rank >= 4 then
+			UiBuilder.pulse(cardStroke)
+		end
+
+		-- The 3D pet, spinning in its frame; click it for a happy twirl.
+		local viewportButton = UiBuilder.create("TextButton", {
+			Name = "ViewportButton",
+			Position = UDim2.new(0, 8, 0, 6),
+			Size = UDim2.new(1, -16, 0, 84),
+			BackgroundColor3 = Color3.fromRGB(28, 34, 44),
+			BorderSizePixel = 0,
+			Text = "",
+			Parent = card,
+		}) :: TextButton
+		UiBuilder.round(viewportButton, 10)
+
+		local viewport =
+			PetViewport.create(viewportButton, petId, UDim2.new(1, 0, 1, 0), UDim2.new(0, 0, 0, 0))
+
+		viewportButton.Activated:Connect(function()
+			if viewport ~= nil then
+				PetViewport.celebrate(viewport)
+			end
+			UiBuilder.popOpen(card)
+		end)
+
+		local nameLabel = UiBuilder.create("TextLabel", {
 			Name = "PetName",
-			Position = UDim2.new(0, 8, 0, 8),
-			Size = UDim2.new(1, -16, 0, 40),
+			Position = UDim2.new(0, 8, 0, 92),
+			Size = UDim2.new(1, -16, 0, 20),
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBlack,
 			Text = info.name,
 			TextColor3 = Color3.fromRGB(255, 255, 255),
-			TextSize = 17,
-			TextWrapped = true,
+			TextScaled = true,
 			Parent = card,
-		})
+		}) :: TextLabel
+
+		if info.tierName == "Ultra" then
+			UiBuilder.shineText(nameLabel)
+		end
 
 		UiBuilder.create("TextLabel", {
 			Name = "PetTier",
-			Position = UDim2.new(0, 8, 0, 52),
-			Size = UDim2.new(1, -16, 0, 36),
+			Position = UDim2.new(0, 8, 0, 114),
+			Size = UDim2.new(1, -16, 0, 34),
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBold,
 			Text = string.format("%s\n+%d%% growth", info.tierName, info.bonus * 100),
 			TextColor3 = info.tierColor,
-			TextSize = 14,
+			TextSize = 13,
 			Parent = card,
 		})
 
 		local equipButton = UiBuilder.create("TextButton", {
 			Name = "EquipButton",
 			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, -8),
-			Size = UDim2.new(1, -16, 0, 32),
+			Position = UDim2.new(0.5, 0, 1, -6),
+			Size = UDim2.new(1, -16, 0, 30),
 			BackgroundColor3 = if isEquipped then EQUIPPED_COLOR else ACCENT_COLOR,
 			BorderSizePixel = 0,
 			Font = Enum.Font.GothamBold,
@@ -268,20 +308,21 @@ function BackpackGui.start()
 	})
 
 	-- The window fills most of the screen: inventory is a destination,
-	-- not a popup.
+	-- not a popup. Slightly translucent gray so the world glows through
+	-- without turning the panel flat.
 	local window = UiBuilder.create("Frame", {
 		Name = "BackpackWindow",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
 		Size = UDim2.new(0.72, 0, 0.72, 0),
-		BackgroundColor3 = PANEL_COLOR,
+		BackgroundColor3 = Color3.fromRGB(58, 63, 72),
+		BackgroundTransparency = 0.15,
 		BorderSizePixel = 0,
 		Visible = false,
 		Parent = screenGui,
 	})
 	UiBuilder.round(window, 16)
 	UiBuilder.stroke(window, ACCENT_COLOR, 2)
-	UiBuilder.gradient(window, Color3.fromRGB(38, 48, 62), PANEL_COLOR)
 
 	UiBuilder.create("TextLabel", {
 		Name = "Title",
@@ -361,7 +402,7 @@ function BackpackGui.start()
 			-- Boost cards are wider than pet cards; the grid adapts per
 			-- tab so nothing overlaps.
 			gridLayout.CellSize = if activeTab == "Pets"
-				then UDim2.new(0, 150, 0, 150)
+				then UDim2.new(0, 150, 0, 196)
 				else UDim2.new(0, 220, 0, 110)
 		end
 

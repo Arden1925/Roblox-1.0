@@ -97,6 +97,70 @@ function UiBuilder.pulse(stroke: UIStroke)
 end
 
 --[[
+	Special-item text: a rainbow gradient that slowly sweeps through the
+	label, plus a flashing brightness pulse. One looping tween each, so
+	the cost stays fixed no matter how long the label lives.
+]]
+function UiBuilder.shineText(label: TextLabel)
+	local gradient = UiBuilder.create("UIGradient", {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 89, 94)),
+			ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 202, 58)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(138, 201, 38)),
+			ColorSequenceKeypoint.new(0.75, Color3.fromRGB(25, 130, 196)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 89, 94)),
+		}),
+		Rotation = 0,
+		Parent = label,
+	}) :: UIGradient
+
+	TweenService:Create(
+		gradient,
+		TweenInfo.new(2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+		{ Rotation = 360 }
+	):Play()
+
+	TweenService:Create(
+		label,
+		TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+		{ TextTransparency = 0.35 }
+	):Play()
+end
+
+--[[
+	A bright band that sweeps across a card forever -- the classic
+	storefront shimmer that pulls the eye to featured items.
+]]
+function UiBuilder.shimmer(card: GuiObject)
+	local band = UiBuilder.create("Frame", {
+		Name = "Shimmer",
+		Position = UDim2.new(-0.3, 0, 0, 0),
+		Size = UDim2.new(0.18, 0, 1, 0),
+		Rotation = 12,
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 0.75,
+		BorderSizePixel = 0,
+		ZIndex = 3,
+		Parent = card,
+	})
+
+	UiBuilder.create("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.5, 0.2),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = band,
+	})
+
+	TweenService:Create(
+		band,
+		TweenInfo.new(1.8, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut, -1, false, 1),
+		{ Position = UDim2.new(1.2, 0, 0, 0) }
+	):Play()
+end
+
+--[[
 	A draggable horizontal slider. Calls onChanged with a value in
 	[minimum, maximum] while dragging and on release. Returns a function
 	that moves the handle programmatically (for initial values).
@@ -109,9 +173,13 @@ function UiBuilder.slider(
 	accentColor: Color3,
 	onChanged: (number) -> ()
 ): (number) -> ()
+	-- Inset by half the handle's width on each side so the handle sits
+	-- fully inside the holder even at the extremes.
 	local track = UiBuilder.create("Frame", {
 		Name = "SliderTrack",
-		Size = UDim2.new(1, 0, 0, 10),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(1, -24, 0, 10),
 		BackgroundColor3 = Color3.fromRGB(72, 84, 96),
 		BorderSizePixel = 0,
 		Parent = parent,

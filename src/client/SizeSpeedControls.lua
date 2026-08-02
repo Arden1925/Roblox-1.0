@@ -8,6 +8,7 @@
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local Client = script.Parent
 local Toast = require(Client.Toast)
@@ -20,10 +21,55 @@ local Remotes = require(Shared.Remotes)
 local PANEL_COLOR = Color3.fromRGB(24, 30, 38)
 local SPEED_COLOR = Color3.fromRGB(0, 206, 201)
 local SIZE_COLOR = Color3.fromRGB(255, 159, 67)
+local LIGHTNING_BLUE = Color3.fromRGB(0, 170, 255)
 
 local localPlayer = Players.LocalPlayer
 
 local SizeSpeedControls = {}
+
+--[[
+	Blue lightning bolts darting across the panel whenever the speed
+	goes UP -- the drama is the point, since speed itself is only a
+	comfort setting.
+]]
+local function playLightning(panel: Frame)
+	for boltIndex = 1, 3 do
+		local bolt = UiBuilder.create("TextLabel", {
+			Name = "Bolt",
+			Position = UDim2.new(-0.2, 0, 0.1 + boltIndex * 0.22, 0),
+			Size = UDim2.new(0, 34, 0, 34),
+			Rotation = -20 + boltIndex * 14,
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBlack,
+			Text = "\u{26A1}",
+			TextColor3 = LIGHTNING_BLUE,
+			TextSize = 30,
+			ZIndex = 3,
+			Parent = panel,
+		})
+
+		local dart = TweenService:Create(
+			bolt,
+			TweenInfo.new(0.35 + boltIndex * 0.08, Enum.EasingStyle.Quad),
+			{
+				Position = UDim2.new(1.1, 0, 0.05 + boltIndex * 0.18, 0),
+				TextTransparency = 0.6,
+			}
+		)
+		dart:Play()
+		dart.Completed:Connect(function()
+			bolt:Destroy()
+		end)
+	end
+
+	local flash = UiBuilder.stroke(panel, LIGHTNING_BLUE, 3)
+	TweenService:Create(flash, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {
+		Transparency = 1,
+	}):Play()
+	task.delay(0.6, function()
+		flash:Destroy()
+	end)
+end
 
 local function sizeMasterPass(): { [string]: any }?
 	for _, pass in ipairs(GameConfig.passes) do
@@ -81,8 +127,9 @@ function SizeSpeedControls.start()
 		BackgroundColor3 = PANEL_COLOR,
 		BackgroundTransparency = 0.15,
 		BorderSizePixel = 0,
+		ClipsDescendants = true,
 		Parent = screenGui,
-	})
+	}) :: Frame
 	UiBuilder.round(panel, 12)
 
 	local layout = UiBuilder.create("UIListLayout", {
@@ -110,6 +157,9 @@ function SizeSpeedControls.start()
 		Parent = speedSection,
 	})
 
+	local lastSpeed = GameConfig.speed.default
+	local lastBoltAt = 0
+
 	UiBuilder.slider(
 		sliderHolder,
 		GameConfig.speed.minimum,
@@ -117,6 +167,14 @@ function SizeSpeedControls.start()
 		GameConfig.speed.default,
 		SPEED_COLOR,
 		function(value)
+			-- Lightning only on meaningful increases, throttled so
+			-- dragging does not strobe the panel.
+			if value > lastSpeed + 0.5 and os.clock() - lastBoltAt > 0.4 then
+				lastBoltAt = os.clock()
+				playLightning(panel)
+			end
+			lastSpeed = value
+
 			task.spawn(function()
 				local setDesiredSpeed = Remotes.get("SetDesiredSpeed") :: RemoteEvent
 				setDesiredSpeed:FireServer(value)

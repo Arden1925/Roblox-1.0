@@ -82,21 +82,28 @@ local function createCard(
 	accent: Color3,
 	featured: boolean
 ): TextButton
+	-- Featured cards break the house style on purpose: razor-sharp
+	-- corners, a hot gradient, a sweeping shimmer, and rainbow-shining
+	-- names -- the storefront look that grabs eyes.
 	local card = UiBuilder.create("Frame", {
 		Name = name,
 		LayoutOrder = order,
 		Size = UDim2.new(widthScale, -8, 1, 0),
 		BackgroundColor3 = CARD_COLOR,
 		BorderSizePixel = 0,
+		ClipsDescendants = true,
 		Parent = parent,
 	})
-	UiBuilder.round(card, 12)
-	UiBuilder.stroke(card, accent, if featured then 2 else 1)
 	if featured then
-		UiBuilder.gradient(card, accent, CARD_COLOR)
+		UiBuilder.stroke(card, Color3.fromRGB(255, 60, 120), 3)
+		UiBuilder.gradient(card, Color3.fromRGB(255, 94, 58), Color3.fromRGB(120, 40, 190))
+		UiBuilder.shimmer(card)
+	else
+		UiBuilder.round(card, 12)
+		UiBuilder.stroke(card, accent, 1)
 	end
 
-	UiBuilder.create("TextLabel", {
+	local nameLabel = UiBuilder.create("TextLabel", {
 		Name = "CardName",
 		Position = UDim2.new(0, 12, 0, 8),
 		Size = UDim2.new(1, -24, 0, if featured then 28 else 22),
@@ -104,10 +111,14 @@ local function createCard(
 		Font = Enum.Font.GothamBlack,
 		Text = name,
 		TextColor3 = Color3.fromRGB(255, 255, 255),
-		TextSize = if featured then 22 else 17,
+		TextSize = if featured then 24 else 17,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = card,
-	})
+	}) :: TextLabel
+
+	if featured then
+		UiBuilder.shineText(nameLabel)
+	end
 
 	UiBuilder.create("TextLabel", {
 		Name = "CardDescription",
