@@ -1,25 +1,28 @@
 --[[
-	Builds a small 3D model for any pet id, deterministically: the same
-	pet always looks the same everywhere, without any uploaded assets.
-	The id's hash picks the body shape and proportions, the tier picks
-	the color, and higher tiers earn extras -- horns, halos, and a
-	glowing aura shell. Used by UI viewports on the client and by the
-	in-world follower on the server.
+	Builds the 3D model for any pet id from the Sea Animals asset pack in
+	ReplicatedStorage.Assets.Models: the pet's name picks the animal, the
+	model is normalized to pet size and centered on the origin, and a
+	mutation dresses it up -- a bigger body, a colored aura shell, themed
+	particles, and light. Used by UI viewports on the client and by the
+	in-world follower on the server; a primitive fallback pet keeps both
+	working if the asset pack is ever missing.
 ]]
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = script.Parent
 local PetCatalog = require(Shared.PetCatalog)
 
-local BODY_SHAPES = {
-	Enum.PartType.Ball,
-	Enum.PartType.Block,
-	Enum.PartType.Cylinder,
+-- Pets whose display name differs from the model name in the pack.
+local MODEL_ALIASES = {
+	["Electric Eel"] = "ElectricEel",
+	["Steampunk Turtle"] = "SteampunkTurtle",
+	["Fruit Turtle"] = "FruitTurtle",
+	["Flower Whale"] = "FlowerWhale",
 }
 
--- Tiers at or above these ranks earn each extra.
-local HORN_MINIMUM_RANK = 3
-local HALO_MINIMUM_RANK = 5
-local AURA_MINIMUM_RANK = 4
+-- Base body height in studs before the mutation's scale multiplies it.
+local BASE_HEIGHT = 2
 
 local TIER_RANKS = {
 	Common = 1,
@@ -30,45 +33,170 @@ local TIER_RANKS = {
 	Ultra = 6,
 }
 
+-- Per-mutation particle tuning; color comes from the mutation spec.
+-- Shadow smolders slowly, electric crackles fast, cosmic adds a second
+-- starfield emitter on top of its glow.
+local MUTATION_PARTICLES: { [string]: { rate: number, speed: number, size: number } } = {
+	shiny = { rate = 4, speed = 1, size = 0.25 },
+	golden = { rate = 8, speed = 1.5, size = 0.3 },
+	frozen = { rate = 8, speed = 0.6, size = 0.35 },
+	electric = { rate = 16, speed = 4, size = 0.2 },
+	shadow = { rate = 10, speed = 0.5, size = 0.6 },
+	rainbow = { rate = 14, speed = 2, size = 0.3 },
+	cosmic = { rate = 18, speed = 2.5, size = 0.35 },
+}
+
 local PetModels = {}
-
-local function hashString(text: string): number
-	local hash = 5381
-
-	for index = 1, #text do
-		hash = (hash * 33 + string.byte(text, index)) % 1048576
-	end
-
-	return hash
-end
-
-local function createPart(properties: { [string]: any }): BasePart
-	local part = Instance.new("Part")
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CastShadow = false
-	part.TopSurface = Enum.SurfaceType.Smooth
-	part.BottomSurface = Enum.SurfaceType.Smooth
-
-	for key, value in pairs(properties) do
-		if key ~= "Parent" then
-			part[key] = value
-		end
-	end
-
-	part.Parent = properties.Parent
-
-	return part
-end
 
 function PetModels.tierRank(tierName: string): number
 	return TIER_RANKS[tierName] or 1
 end
 
+local function findAnimalTemplate(baseName: string): Instance?
+	local assetsFolder = ReplicatedStorage:FindFirstChild("Assets")
+	local modelsFolder = if assetsFolder ~= nil then assetsFolder:FindFirstChild("Models") else nil
+	local pack = if modelsFolder ~= nil
+		then modelsFolder:FindFirstChild("Sea_Animals_Pack")
+		else nil
+	local animals = if pack ~= nil then pack:FindFirstChild("Models") else nil
+	if animals == nil then
+		return nil
+	end
+
+	local template = animals:FindFirstChild(baseName)
+	if template == nil and MODEL_ALIASES[baseName] ~= nil then
+		template = animals:FindFirstChild(MODEL_ALIASES[baseName])
+	end
+
+	return template
+end
+
+local function makeInert(container: Model)
+	for _, descendant in ipairs(container:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			descendant.Anchored = true
+			descendant.CanCollide = false
+			descendant.CanQuery = false
+			descendant.CanTouch = false
+			descendant.CastShadow = false
+		end
+	end
+end
+
+local function largestPart(container: Model): BasePart?
+	local best: BasePart? = nil
+	local bestVolume = 0
+
+	for _, descendant in ipairs(container:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			local size = descendant.Size
+			local volume = size.X * size.Y * size.Z
+			if volume > bestVolume then
+				bestVolume = volume
+				best = descendant
+			end
+		end
+	end
+
+	return best
+end
+
+-- The stand-in pet when the asset pack is missing: a tinted ball with
+-- eyes, so every screen still shows something alive.
+local function buildFallback(model: Model, tint: Color3)
+	local body = Instance.new("Part")
+	body.Name = "Body"
+	body.Shape = Enum.PartType.Ball
+	body.Size = Vector3.new(1.8, 1.8, 1.8)
+	body.CFrame = CFrame.new(0, 0, 0)
+	body.Color = tint
+	body.Material = Enum.Material.SmoothPlastic
+	body.Parent = model
+
+	for _, sideX in ipairs({ -0.4, 0.4 }) do
+		local eye = Instance.new("Part")
+		eye.Name = "Eye"
+		eye.Shape = Enum.PartType.Ball
+		eye.Size = Vector3.new(0.3, 0.3, 0.3)
+		eye.CFrame = CFrame.new(sideX, 0.3, -0.8)
+		eye.Color = Color3.fromRGB(20, 20, 25)
+		eye.Material = Enum.Material.SmoothPlastic
+		eye.Parent = model
+	end
+end
+
 --[[
-	Builds the pet model centered on the origin, roughly 2 studs tall.
-	Returns nil for unknown ids so callers can fall back gracefully.
+	The mutation's visual signature: a translucent colored shell with a
+	glow light and a particle emitter tuned per mutation. Rainbow cycles
+	its particle colors through the full wheel instead of one hue.
+]]
+local function applyMutationVisuals(model: Model, mutation: PetCatalog.PetMutation)
+	local _, boxSize = model:GetBoundingBox()
+	local shellDiameter = math.max(boxSize.X, boxSize.Y, boxSize.Z) + 0.8
+
+	local shell = Instance.new("Part")
+	shell.Name = "MutationAura"
+	shell.Shape = Enum.PartType.Ball
+	shell.Size = Vector3.new(shellDiameter, shellDiameter, shellDiameter)
+	shell.CFrame = CFrame.new(0, 0, 0)
+	shell.Color = mutation.color
+	shell.Material = Enum.Material.ForceField
+	shell.Transparency = 0.4
+	shell.Anchored = true
+	shell.CanCollide = false
+	shell.CanQuery = false
+	shell.CanTouch = false
+	shell.CastShadow = false
+	shell.Parent = model
+
+	local light = Instance.new("PointLight")
+	light.Color = mutation.color
+	light.Brightness = 2
+	light.Range = 8
+	light.Parent = shell
+
+	local tuning = MUTATION_PARTICLES[mutation.key]
+	if tuning == nil then
+		return
+	end
+
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Rate = tuning.rate
+	emitter.Speed = NumberRange.new(tuning.speed * 0.6, tuning.speed)
+	emitter.Lifetime = NumberRange.new(0.6, 1.4)
+	emitter.Size = NumberSequence.new(tuning.size)
+	emitter.Transparency = NumberSequence.new(0.2, 1)
+	emitter.LightEmission = if mutation.key == "shadow" then 0 else 0.8
+	emitter.SpreadAngle = Vector2.new(180, 180)
+	emitter.Parent = shell
+
+	if mutation.key == "rainbow" then
+		emitter.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 80, 80)),
+			ColorSequenceKeypoint.new(0.33, Color3.fromRGB(255, 230, 80)),
+			ColorSequenceKeypoint.new(0.66, Color3.fromRGB(80, 255, 140)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(120, 140, 255)),
+		})
+	else
+		emitter.Color = ColorSequence.new(mutation.color)
+	end
+
+	-- Cosmic pets float in their own tiny galaxy: a second, dimmer
+	-- emitter of slow white stars behind the colored one.
+	if mutation.key == "cosmic" then
+		local stars = emitter:Clone()
+		stars.Rate = 8
+		stars.Speed = NumberRange.new(0.3, 0.8)
+		stars.Size = NumberSequence.new(0.15)
+		stars.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+		stars.Parent = shell
+	end
+end
+
+--[[
+	Builds the pet model centered on the origin, BASE_HEIGHT studs tall
+	before the mutation scale. Returns nil for unknown ids so callers can
+	fall back gracefully.
 ]]
 function PetModels.build(petId: string): Model?
 	local info = PetCatalog.infoFor(petId)
@@ -76,128 +204,52 @@ function PetModels.build(petId: string): Model?
 		return nil
 	end
 
-	-- Hash the base id so a shiny pet keeps its base pet's silhouette.
-	local hash = hashString(PetCatalog.baseId(petId))
-	local rank = PetModels.tierRank(info.tierName)
-
 	local model = Instance.new("Model")
 	model.Name = info.name
 
-	local bodyShape = BODY_SHAPES[hash % #BODY_SHAPES + 1]
-	local bodyWidth = 1.4 + (hash % 5) * 0.12
-
-	local body = createPart({
-		Name = "Body",
-		Shape = bodyShape,
-		Size = Vector3.new(bodyWidth, 1.3, 1.1),
-		CFrame = CFrame.new(0, 0, 0),
-		Color = info.tierColor,
-		Material = Enum.Material.SmoothPlastic,
-		Parent = model,
-	})
-
-	local head = createPart({
-		Name = "Head",
-		Shape = Enum.PartType.Ball,
-		Size = Vector3.new(0.9, 0.9, 0.9),
-		CFrame = CFrame.new(0, 0.95, -0.2),
-		Color = info.tierColor:Lerp(Color3.fromRGB(255, 255, 255), 0.35),
-		Material = Enum.Material.SmoothPlastic,
-		Parent = model,
-	})
-
-	-- Eyes make it a creature instead of a shape.
-	for _, sideX in ipairs({ -0.22, 0.22 }) do
-		createPart({
-			Name = "Eye",
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.new(0.18, 0.18, 0.18),
-			CFrame = head.CFrame * CFrame.new(sideX, 0.1, -0.38),
-			Color = Color3.fromRGB(20, 20, 25),
-			Material = Enum.Material.SmoothPlastic,
-			Parent = model,
-		})
+	local template = findAnimalTemplate(info.baseName)
+	if template ~= nil then
+		local clone = template:Clone()
+		clone.Parent = model
+	else
+		buildFallback(model, info.tierColor)
 	end
 
-	-- Ears vary by hash so siblings in one egg still differ.
-	if hash % 3 ~= 0 then
-		for _, sideX in ipairs({ -0.3, 0.3 }) do
-			createPart({
-				Name = "Ear",
-				Size = Vector3.new(0.2, 0.55, 0.2),
-				CFrame = head.CFrame * CFrame.new(sideX, 0.5, 0),
-				Color = info.tierColor,
-				Material = Enum.Material.SmoothPlastic,
-				Parent = model,
-			})
+	makeInert(model)
+
+	local extents = model:GetExtentsSize()
+	if extents.Y < 0.05 then
+		model:Destroy()
+
+		return nil
+	end
+
+	local targetHeight = BASE_HEIGHT * (if info.mutation ~= nil then info.mutation.scale else 1)
+	model:ScaleTo(targetHeight / extents.Y)
+
+	-- Recenter so the bounding box sits on the origin: viewport cameras
+	-- and the follower's alignment both assume the pet is centered.
+	local boxCFrame = model:GetBoundingBox()
+	model:PivotTo(model:GetPivot() - boxCFrame.Position)
+
+	-- Pick the anchor part before any aura shell exists, so the follower
+	-- aligns to the animal's body rather than the effect shell.
+	model.PrimaryPart = largestPart(model)
+
+	if info.mutation ~= nil then
+		applyMutationVisuals(model, info.mutation)
+	elseif PetModels.tierRank(info.tierName) >= 5 then
+		-- Top tiers glow softly even unmutated, so a Mythic in a
+		-- viewport reads as special at a glance.
+		local body = model.PrimaryPart
+		if body ~= nil then
+			local light = Instance.new("PointLight")
+			light.Color = info.tierColor
+			light.Brightness = 1.5
+			light.Range = 6
+			light.Parent = body
 		end
 	end
-
-	if rank >= HORN_MINIMUM_RANK then
-		createPart({
-			Name = "Horn",
-			Size = Vector3.new(0.18, 0.6, 0.18),
-			CFrame = head.CFrame * CFrame.new(0, 0.6, 0) * CFrame.Angles(0, 0, math.rad(8)),
-			Color = Color3.fromRGB(255, 234, 167),
-			Material = Enum.Material.Neon,
-			Parent = model,
-		})
-	end
-
-	if rank >= HALO_MINIMUM_RANK then
-		createPart({
-			Name = "Halo",
-			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(0.12, 1, 1),
-			CFrame = head.CFrame * CFrame.new(0, 0.85, 0) * CFrame.Angles(0, 0, math.rad(90)),
-			Color = Color3.fromRGB(255, 234, 167),
-			Material = Enum.Material.Neon,
-			Parent = model,
-		})
-	end
-
-	-- Shiny pets glitter regardless of tier: glass body finish and a
-	-- crown of tiny sparkle studs.
-	if PetCatalog.isShiny(petId) then
-		body.Material = Enum.Material.Glass
-		head.Material = Enum.Material.Glass
-
-		for sparkleIndex = 1, 4 do
-			local angle = sparkleIndex * math.pi / 2
-			createPart({
-				Name = "Sparkle",
-				Shape = Enum.PartType.Ball,
-				Size = Vector3.new(0.16, 0.16, 0.16),
-				CFrame = CFrame.new(math.cos(angle) * 1.1, 1.5, math.sin(angle) * 1.1),
-				Color = Color3.fromRGB(255, 255, 255),
-				Material = Enum.Material.Neon,
-				Parent = model,
-			})
-		end
-	end
-
-	-- The aura: a glowing translucent shell around the whole pet, the
-	-- visual signature of hard-to-get tiers.
-	if rank >= AURA_MINIMUM_RANK then
-		local aura = createPart({
-			Name = "Aura",
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.new(2.8, 2.8, 2.8),
-			CFrame = CFrame.new(0, 0.3, 0),
-			Color = info.tierColor,
-			Material = Enum.Material.ForceField,
-			Transparency = 0.35,
-			Parent = model,
-		})
-
-		local light = Instance.new("PointLight")
-		light.Color = info.tierColor
-		light.Brightness = 1.5
-		light.Range = 6
-		light.Parent = aura
-	end
-
-	model.PrimaryPart = body
 
 	return model
 end

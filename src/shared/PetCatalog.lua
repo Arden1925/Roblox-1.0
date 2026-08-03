@@ -12,13 +12,23 @@
 local Shared = script.Parent
 local GameConfig = require(Shared.GameConfig)
 
+export type PetMutation = {
+	key: string,
+	name: string,
+	color: Color3,
+	scale: number,
+	bonusMultiplier: number,
+}
+
 export type PetInfo = {
 	id: string,
 	name: string,
+	baseName: string,
 	tierName: string,
 	tierColor: Color3,
 	bonus: number,
 	worldIndex: number?,
+	mutation: PetMutation?,
 }
 
 local PetCatalog = {}
@@ -46,6 +56,7 @@ for worldIndex, world in ipairs(GameConfig.worlds) do
 		register({
 			id = string.format("w%d:%s", worldIndex, petName),
 			name = petName,
+			baseName = petName,
 			tierName = tier.name,
 			tierColor = Color3.fromRGB(tier.color[1], tier.color[2], tier.color[3]),
 			bonus = tier.bonus,
@@ -58,6 +69,7 @@ for worldIndex, world in ipairs(GameConfig.worlds) do
 		register({
 			id = string.format("r%d:%s", worldIndex, petSpec.name),
 			name = petSpec.name,
+			baseName = petSpec.name,
 			tierName = tier.name,
 			tierColor = Color3.fromRGB(tier.color[1], tier.color[2], tier.color[3]),
 			bonus = petSpec.bonus,
@@ -69,49 +81,79 @@ end
 register({
 	id = "limited:" .. GameConfig.limitedPet.name,
 	name = GameConfig.limitedPet.name,
+	baseName = GameConfig.limitedPet.name,
 	tierName = "Ultra",
 	tierColor = Color3.fromRGB(255, 234, 167),
 	bonus = GameConfig.limitedPet.bonus,
 	worldIndex = nil,
 })
 
-local SHINY_SUFFIX = "*shiny"
+-- Mutated ids append "*<key>" to the base id (e.g. "w1:Crab*golden"),
+-- so mutated variants are derived, never registered. The old "*shiny"
+-- saves keep working because shiny is one of the mutation keys.
+local mutationByKey: { [string]: PetMutation } = {}
 
-function PetCatalog.shinyId(petId: string): string
-	return petId .. SHINY_SUFFIX
+for _, spec in ipairs(GameConfig.mutations) do
+	mutationByKey[spec.key] = {
+		key = spec.key,
+		name = spec.name,
+		color = Color3.fromRGB(spec.color[1], spec.color[2], spec.color[3]),
+		scale = spec.scale,
+		bonusMultiplier = spec.bonusMultiplier,
+	}
 end
 
-function PetCatalog.isShiny(petId: string): boolean
-	return string.sub(petId, -#SHINY_SUFFIX) == SHINY_SUFFIX
+function PetCatalog.mutatedId(petId: string, mutationKey: string): string
+	return petId .. "*" .. mutationKey
 end
 
 function PetCatalog.baseId(petId: string): string
-	if PetCatalog.isShiny(petId) then
-		return string.sub(petId, 1, -#SHINY_SUFFIX - 1)
-	end
+	local base = string.match(petId, "^(.+)%*")
 
-	return petId
+	return if base ~= nil then base else petId
+end
+
+function PetCatalog.mutationFor(petId: string): PetMutation?
+	local key = string.match(petId, "%*(.+)$")
+
+	return if key ~= nil then mutationByKey[key] else nil
 end
 
 --[[
-	Shiny variants are derived, not registered: any pet id with the shiny
-	suffix resolves to its base pet with a boosted bonus and a shiny
-	name, so the catalog never has to list them.
+	Rolls a mutation from one uniform [0, 1) sample by walking the list
+	rarest first with cumulative chances, so overlapping ranges always
+	resolve in favor of the rarer mutation. Returns nil for no mutation.
 ]]
+function PetCatalog.rollMutation(sample: number): string?
+	local cumulative = 0
+
+	for _, spec in ipairs(GameConfig.mutations) do
+		cumulative += spec.chance
+		if sample < cumulative then
+			return spec.key
+		end
+	end
+
+	return nil
+end
+
 function PetCatalog.infoFor(petId: string): PetInfo?
-	if PetCatalog.isShiny(petId) then
-		local baseInfo = infoById[string.sub(petId, 1, -#SHINY_SUFFIX - 1)]
+	local mutation = PetCatalog.mutationFor(petId)
+	if mutation ~= nil then
+		local baseInfo = infoById[PetCatalog.baseId(petId)]
 		if baseInfo == nil then
 			return nil
 		end
 
 		return {
 			id = petId,
-			name = "Shiny " .. baseInfo.name,
+			name = mutation.name .. " " .. baseInfo.name,
+			baseName = baseInfo.name,
 			tierName = baseInfo.tierName,
-			tierColor = baseInfo.tierColor:Lerp(Color3.fromRGB(255, 255, 255), 0.3),
-			bonus = baseInfo.bonus * GameConfig.shiny.bonusMultiplier,
+			tierColor = baseInfo.tierColor:Lerp(mutation.color, 0.35),
+			bonus = baseInfo.bonus * mutation.bonusMultiplier,
 			worldIndex = baseInfo.worldIndex,
+			mutation = mutation,
 		}
 	end
 

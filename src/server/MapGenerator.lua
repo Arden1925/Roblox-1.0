@@ -101,25 +101,35 @@ local function addOutline(part: BasePart, color: Color3)
 end
 
 -- Per-world identity used by the egg capsules and decorations, so every
--- world reads as its own place the moment you walk in.
+-- world reads as its own place the moment you walk in. eggColor is the
+-- shell, detailColor paints the theme details on it -- meadow spots,
+-- vent rivets, ember cracks, the cloud halo.
 local WORLD_THEMES = {
 	{
 		eggMaterial = Enum.Material.Grass,
+		eggColor = Color3.fromRGB(168, 230, 120),
+		detailColor = Color3.fromRGB(255, 170, 210),
 		accent = Color3.fromRGB(120, 224, 76),
 		pedestalColor = Color3.fromRGB(88, 62, 41),
 	},
 	{
 		eggMaterial = Enum.Material.DiamondPlate,
+		eggColor = Color3.fromRGB(140, 155, 170),
+		detailColor = Color3.fromRGB(116, 185, 255),
 		accent = Color3.fromRGB(116, 185, 255),
 		pedestalColor = Color3.fromRGB(99, 110, 114),
 	},
 	{
-		eggMaterial = Enum.Material.CrackedLava,
+		eggMaterial = Enum.Material.Basalt,
+		eggColor = Color3.fromRGB(60, 50, 48),
+		detailColor = Color3.fromRGB(255, 118, 33),
 		accent = Color3.fromRGB(255, 118, 33),
 		pedestalColor = Color3.fromRGB(45, 45, 45),
 	},
 	{
 		eggMaterial = Enum.Material.Ice,
+		eggColor = Color3.fromRGB(215, 235, 255),
+		detailColor = Color3.fromRGB(255, 234, 167),
 		accent = Color3.fromRGB(224, 238, 255),
 		pedestalColor = Color3.fromRGB(190, 210, 255),
 	},
@@ -202,10 +212,18 @@ local function createPortal(parent: Instance, worldIndex: number, minZ: number)
 	CollectionService:AddTag(portal, "Portal")
 end
 
+--[[
+	The egg capsule: a real egg-shaped shell whose look matches its
+	name -- grassy and spotted for the Meadow Egg, riveted steel for the
+	Vent Egg, crack-glowing basalt for the Ember Egg, haloed ice for the
+	Cloud Egg -- floating in a tall glass pod with holo rings, rising
+	particles, and an inner glow.
+]]
 local function createEggStand(parent: Instance, worldIndex: number, minZ: number)
 	local world = GameConfig.worlds[worldIndex]
 	local theme = WORLD_THEMES[worldIndex]
 	local center = Vector3.new(42, WorldLayout.baseY, minZ + 22)
+	local eggCenter = center + Vector3.new(0, 7, 0)
 
 	local pedestal = createPart({
 		Name = "EggStand",
@@ -229,35 +247,168 @@ local function createEggStand(parent: Instance, worldIndex: number, minZ: number
 		Parent = parent,
 	})
 
+	-- The pod: a taller glass tube with a neon lip at each end, so the
+	-- egg reads as a treasure in a display case, not a ball on a stick.
 	createPart({
 		Name = "EggCapsule",
 		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(9, 7, 7),
-		CFrame = CFrame.new(center + Vector3.new(0, 6.5, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Size = Vector3.new(12, 7.5, 7.5),
+		CFrame = CFrame.new(center + Vector3.new(0, 8, 0)) * CFrame.Angles(0, 0, math.rad(90)),
 		Color = Color3.fromRGB(223, 249, 251),
 		Material = Enum.Material.Glass,
-		Transparency = 0.6,
+		Transparency = 0.65,
 		CanCollide = false,
 		Parent = parent,
 	})
 
+	for _, lipHeight in ipairs({ 2.2, 13.9 }) do
+		createPart({
+			Name = "CapsuleLip",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.35, 8, 8),
+			CFrame = CFrame.new(center + Vector3.new(0, lipHeight, 0))
+				* CFrame.Angles(0, 0, math.rad(90)),
+			Color = theme.accent,
+			Material = Enum.Material.Neon,
+			CanCollide = false,
+			Parent = parent,
+		})
+	end
+
+	-- Two tilted holo rings around the egg; the client spins them.
+	for ringIndex = 1, 2 do
+		local tilt = if ringIndex == 1 then 25 else -25
+		local ring = createPart({
+			Name = "HoloRing",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.25, 6, 6),
+			CFrame = CFrame.new(eggCenter) * CFrame.Angles(math.rad(tilt), 0, math.rad(90 + tilt)),
+			Color = theme.accent,
+			Material = Enum.Material.Neon,
+			Transparency = 0.35,
+			CanCollide = false,
+			Parent = parent,
+		})
+		CollectionService:AddTag(ring, "Spinner")
+	end
+
+	-- The egg itself: a stretched sphere in the theme's shell material.
 	local egg = createPart({
-		Name = "EggOrb",
+		Name = "EggShell",
 		Shape = Enum.PartType.Ball,
-		Size = Vector3.new(3.4, 3.4, 3.4),
-		Position = center + Vector3.new(0, 6.5, 0),
-		Color = theme.accent,
+		Size = Vector3.new(4.2, 4.2, 4.2),
+		Position = eggCenter,
+		Color = theme.eggColor,
 		Material = theme.eggMaterial,
 		CanCollide = false,
 		Parent = parent,
 	})
-	CollectionService:AddTag(egg, "Spinner")
+
+	local eggMesh = Instance.new("SpecialMesh")
+	eggMesh.MeshType = Enum.MeshType.Sphere
+	eggMesh.Scale = Vector3.new(1, 1.3, 1)
+	eggMesh.Parent = egg
+
+	local eggLight = Instance.new("PointLight")
+	eggLight.Color = theme.accent
+	eggLight.Brightness = 1.4
+	eggLight.Range = 10
+	eggLight.Parent = egg
+
+	-- Rising sparkles inside the pod, in the theme's color.
+	local sparkles = Instance.new("ParticleEmitter")
+	sparkles.Color = ColorSequence.new(theme.accent)
+	sparkles.Rate = 6
+	sparkles.Speed = NumberRange.new(1, 2)
+	sparkles.Lifetime = NumberRange.new(1, 2)
+	sparkles.Size = NumberSequence.new(0.25)
+	sparkles.Transparency = NumberSequence.new(0.3, 1)
+	sparkles.LightEmission = 0.7
+	sparkles.Parent = egg
+
+	if worldIndex == 1 then
+		-- Meadow Egg: a clutch of soft pink spots on the shell.
+		for _, spot in ipairs({
+			{ 1.4, 1, 1 },
+			{ -1.5, 0.4, 0.9 },
+			{ 0.4, 1.9, -1.3 },
+			{ -0.8, -0.9, -1.6 },
+			{ 1.1, -1.4, -0.9 },
+		}) do
+			createPart({
+				Name = "EggSpot",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.new(0.9, 0.9, 0.9),
+				Position = eggCenter + Vector3.new(spot[1], spot[2], spot[3]),
+				Color = theme.detailColor,
+				Material = Enum.Material.SmoothPlastic,
+				CanCollide = false,
+				Parent = parent,
+			})
+		end
+	elseif worldIndex == 2 then
+		-- Vent Egg: a riveted belt like pressure plating.
+		createPart({
+			Name = "EggBelt",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(1, 4.6, 4.6),
+			CFrame = CFrame.new(eggCenter) * CFrame.Angles(0, 0, math.rad(90)),
+			Color = Color3.fromRGB(80, 90, 100),
+			Material = Enum.Material.DiamondPlate,
+			CanCollide = false,
+			Parent = parent,
+		})
+
+		for boltIndex = 1, 4 do
+			local angle = boltIndex * math.pi / 2
+			createPart({
+				Name = "EggBolt",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.new(0.5, 0.5, 0.5),
+				Position = eggCenter + Vector3.new(math.cos(angle) * 2.3, 0, math.sin(angle) * 2.3),
+				Color = theme.detailColor,
+				Material = Enum.Material.Metal,
+				CanCollide = false,
+				Parent = parent,
+			})
+		end
+	elseif worldIndex == 3 then
+		-- Ember Egg: glowing crack seams, as if something hot is
+		-- already trying to get out.
+		for crackIndex = 1, 4 do
+			createPart({
+				Name = "EggCrack",
+				Size = Vector3.new(0.22, 2.6, 0.22),
+				CFrame = CFrame.new(eggCenter)
+					* CFrame.Angles(0, crackIndex * math.pi / 2, math.rad(15 * crackIndex))
+					* CFrame.new(0, 0, -2),
+				Color = theme.detailColor,
+				Material = Enum.Material.Neon,
+				CanCollide = false,
+				Parent = parent,
+			})
+		end
+	else
+		-- Cloud Egg: a golden halo hovering over the shell.
+		local halo = createPart({
+			Name = "EggHalo",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.25, 3.2, 3.2),
+			CFrame = CFrame.new(eggCenter + Vector3.new(0, 3.4, 0))
+				* CFrame.Angles(0, 0, math.rad(90)),
+			Color = theme.detailColor,
+			Material = Enum.Material.Neon,
+			CanCollide = false,
+			Parent = parent,
+		})
+		CollectionService:AddTag(halo, "Spinner")
+	end
 
 	pedestal:SetAttribute("WorldIndex", worldIndex)
 	addPrompt(pedestal, "View Eggs", world.eggName)
-	-- Well above the capsule top (~10 studs) so the title never clips
-	-- into the glass or the egg.
-	addBillboard(pedestal, world.eggName, theme.accent, 14)
+	-- Well above the capsule top so the title never clips into the
+	-- glass or the egg.
+	addBillboard(pedestal, world.eggName, theme.accent, 17)
 	addOutline(pedestal, theme.accent)
 	CollectionService:AddTag(pedestal, "EggStand")
 end

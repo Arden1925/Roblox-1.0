@@ -22,6 +22,7 @@ export type PlayerData = {
 	coins: number,
 	tutorialDone: boolean,
 	pets: { string },
+	petNames: { [string]: string },
 	equippedPet: string,
 	upgrades: { [string]: number },
 	checkpointsClaimed: { [string]: number },
@@ -49,6 +50,7 @@ local function copyDefaultData(): PlayerData
 		coins = 0,
 		tutorialDone = false,
 		pets = {},
+		petNames = {},
 		equippedPet = "",
 		upgrades = {},
 		checkpointsClaimed = {},
@@ -117,6 +119,15 @@ local function sanitize(result: any): PlayerData
 		for _, petId in ipairs(result.pets) do
 			if typeof(petId) == "string" then
 				table.insert(data.pets, petId)
+			end
+		end
+	end
+
+	-- Nicknames are keyed by the pet's inventory index as a string.
+	if typeof(result.petNames) == "table" then
+		for key, nickname in pairs(result.petNames) do
+			if typeof(key) == "string" and typeof(nickname) == "string" then
+				data.petNames[key] = nickname
 			end
 		end
 	end
