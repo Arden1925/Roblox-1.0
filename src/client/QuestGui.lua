@@ -15,7 +15,7 @@ local Client = script.Parent
 local Toast = require(Client.Toast)
 local UiBuilder = require(Client.UiBuilder)
 
-local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
 local Remotes = require(Shared.Remotes)
 
@@ -25,7 +25,16 @@ local ACCENT_COLOR = Color3.fromRGB(255, 202, 58)
 local READY_COLOR = Color3.fromRGB(76, 209, 55)
 local LOCKED_COLOR = Color3.fromRGB(72, 84, 96)
 
+local PROTECTED_NAMES = {
+	Title = true,
+	CloseButton = true,
+	HeaderBanner = true,
+}
+
 local localPlayer = Players.LocalPlayer
+
+-- Set once start() has built the window; toggle() no-ops until then.
+local questWindow: Frame? = nil
 
 local QuestGui = {}
 
@@ -42,12 +51,6 @@ local function invokeAndToast(remoteName: string, argument: any)
 	end)
 end
 
-local PROTECTED_NAMES = {
-	Title = true,
-	CloseButton = true,
-	HeaderBanner = true,
-}
-
 local function rebuild(container: Frame)
 	for _, child in ipairs(container:GetChildren()) do
 		local rebuildable = child:IsA("Frame") or child:IsA("TextLabel") or child:IsA("TextButton")
@@ -57,7 +60,10 @@ local function rebuild(container: Frame)
 	end
 
 	local questsJson = localPlayer:GetAttribute("QuestsJson")
-	local quests = if typeof(questsJson) == "string" then HttpService:JSONDecode(questsJson) else {}
+	local quests = {}
+	if typeof(questsJson) == "string" then
+		quests = HttpService:JSONDecode(questsJson)
+	end
 
 	for questIndex, quest in ipairs(quests) do
 		local row = UiBuilder.create("Frame", {
@@ -128,7 +134,8 @@ local function rebuild(container: Frame)
 		end)
 	end
 
-	-- The streak strip: seven day boxes, tomorrow always visible.
+	-- All seven day boxes stay visible so tomorrow's reward is always
+	-- teasing the next login.
 	local streakCount = localPlayer:GetAttribute("StreakCount")
 	if typeof(streakCount) ~= "number" then
 		streakCount = 0
@@ -194,7 +201,9 @@ local function rebuild(container: Frame)
 	end)
 end
 
--- The welcome-back popup for offline growth, shown once per session.
+--[[
+	The welcome-back popup for offline growth, shown once per session.
+]]
 local function showOfflinePopup(parent: Instance, gain: number)
 	local popup = UiBuilder.create("Frame", {
 		Name = "WelcomeBack",
@@ -236,6 +245,23 @@ local function showOfflinePopup(parent: Instance, gain: number)
 	task.delay(5, function()
 		popup:Destroy()
 	end)
+end
+
+--[[
+	ShopGui wires its side button to this, possibly before start() has
+	built the window, so it stays a safe no-op until then.
+]]
+function QuestGui.toggle()
+	if questWindow == nil then
+		return
+	end
+
+	if questWindow.Visible then
+		questWindow.Visible = false
+	else
+		rebuild(questWindow)
+		UiBuilder.popOpen(questWindow)
+	end
 end
 
 function QuestGui.start()
@@ -297,14 +323,7 @@ function QuestGui.start()
 
 	UiBuilder.cartoonizeWindow(window, Color3.fromRGB(255, 177, 66))
 
-	QuestGui.toggle = function()
-		if window.Visible then
-			window.Visible = false
-		else
-			rebuild(window)
-			UiBuilder.popOpen(window)
-		end
-	end
+	questWindow = window
 
 	localPlayer:GetAttributeChangedSignal("QuestsJson"):Connect(function()
 		if window.Visible then
@@ -343,8 +362,5 @@ function QuestGui.start()
 	localPlayer:GetAttributeChangedSignal("OfflineGain"):Connect(maybeShowOffline)
 	maybeShowOffline()
 end
-
--- Replaced at start(); declared so ShopGui can wire its side button.
-QuestGui.toggle = function() end
 
 return QuestGui

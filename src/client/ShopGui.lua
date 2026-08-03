@@ -16,7 +16,7 @@ local RebirthGui = require(Client.RebirthGui)
 local Toast = require(Client.Toast)
 local UiBuilder = require(Client.UiBuilder)
 
-local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
 local Remotes = require(Shared.Remotes)
 
@@ -30,10 +30,6 @@ local DISABLED_COLOR = Color3.fromRGB(72, 84, 96)
 -- Passes that earn the big banner treatment.
 local FEATURED_KEYS = { Vip = true, SizeMaster = true }
 
-local localPlayer = Players.LocalPlayer
-
-local ShopGui = {}
-
 -- The circular icon buttons with captions that every simulator uses.
 local SIDE_BUTTON_STYLES = {
 	Shop = { icon = "\u{1F6D2}", color = Color3.fromRGB(235, 69, 44) },
@@ -42,13 +38,19 @@ local SIDE_BUTTON_STYLES = {
 	Shrink = { icon = "\u{1F53D}", color = Color3.fromRGB(52, 172, 224) },
 }
 
+local localPlayer = Players.LocalPlayer
+
+local ShopGui = {}
+
 local function createSideButton(parent: Instance, order: number, text: string): TextButton
 	local style = SIDE_BUTTON_STYLES[text]
 
 	return UiBuilder.iconButton(parent, order, style.icon, text, style.color)
 end
 
--- A row frame the vertical list stacks; cards go inside side by side.
+--[[
+	A row frame the vertical list stacks; cards go inside side by side.
+]]
 local function createRow(parent: Instance, order: number, height: number): Frame
 	local row = UiBuilder.create("Frame", {
 		Name = "Row" .. order,

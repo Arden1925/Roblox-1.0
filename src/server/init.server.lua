@@ -29,7 +29,7 @@ local GameConfig = require(Shared.GameConfig)
 local Remotes = require(Shared.Remotes)
 local SizeFormula = require(Shared.SizeFormula)
 
-Remotes.createAll()
+local remoteByName = Remotes.createAll()
 
 -- Progress is split across services; saving needs it reassembled into
 -- one record.
@@ -163,11 +163,11 @@ local remoteHandlers: { [string]: (Player, ...any) -> (boolean, string) } = {
 }
 
 for remoteName, handler in pairs(remoteHandlers) do
-	local remote = Remotes.get(remoteName) :: RemoteFunction
+	local remote = remoteByName[remoteName] :: RemoteFunction
 	remote.OnServerInvoke = handler
 end
 
-local requestInstantShrink = Remotes.get("RequestInstantShrink") :: RemoteEvent
+local requestInstantShrink = remoteByName.RequestInstantShrink :: RemoteEvent
 requestInstantShrink.OnServerEvent:Connect(function(player)
 	-- Ownership is checked server-side; the client button is a request.
 	if ShopService.playerOwnsPass(player, "InstantShrink") then
@@ -175,13 +175,13 @@ requestInstantShrink.OnServerEvent:Connect(function(player)
 	end
 end)
 
-local setDesiredSize = Remotes.get("SetDesiredSize") :: RemoteEvent
+local setDesiredSize = remoteByName.SetDesiredSize :: RemoteEvent
 setDesiredSize.OnServerEvent:Connect(SizeService.setDesiredSize)
 
-local setDesiredSpeed = Remotes.get("SetDesiredSpeed") :: RemoteEvent
+local setDesiredSpeed = remoteByName.SetDesiredSpeed :: RemoteEvent
 setDesiredSpeed.OnServerEvent:Connect(SizeService.setDesiredSpeed)
 
-local markTutorialDone = Remotes.get("MarkTutorialDone") :: RemoteEvent
+local markTutorialDone = remoteByName.MarkTutorialDone :: RemoteEvent
 markTutorialDone.OnServerEvent:Connect(function(player)
 	player:SetAttribute("TutorialDone", true)
 end)

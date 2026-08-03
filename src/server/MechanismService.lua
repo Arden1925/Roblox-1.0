@@ -20,6 +20,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
 
 local Server = script.Parent
 local QuestService = require(Server.QuestService)
@@ -48,7 +49,7 @@ local function playersOnPart(part: BasePart, extraHeight: number): { [Player]: b
 	local region = part.Size + Vector3.new(0, extraHeight, 0)
 	local center = part.CFrame * CFrame.new(0, extraHeight / 2, 0)
 
-	for _, hit in ipairs(workspace:GetPartBoundsInBox(center, region)) do
+	for _, hit in ipairs(Workspace:GetPartBoundsInBox(center, region)) do
 		local player = Players:GetPlayerFromCharacter(hit.Parent)
 		if player ~= nil then
 			found[player] = true
@@ -148,7 +149,7 @@ local function shatterBoulder(boulder: BasePart)
 			20 + math.random() * 20,
 			(math.random() - 0.5) * 40
 		)
-		chunk.Parent = workspace
+		chunk.Parent = Workspace
 
 		task.delay(3, function()
 			chunk:Destroy()
@@ -324,25 +325,25 @@ function MechanismService.start()
 		sinceUpdate = 0
 
 		for _, plate in ipairs(CollectionService:GetTagged("WeightPlate")) do
-			if plate:IsA("BasePart") and plate:IsDescendantOf(workspace) then
+			if plate:IsA("BasePart") and plate:IsDescendantOf(Workspace) then
 				updatePlate(plate)
 			end
 		end
 
 		for _, updraft in ipairs(CollectionService:GetTagged("Updraft")) do
-			if updraft:IsA("BasePart") and updraft:IsDescendantOf(workspace) then
+			if updraft:IsA("BasePart") and updraft:IsDescendantOf(Workspace) then
 				updateUpdraft(updraft)
 			end
 		end
 
 		for _, crusher in ipairs(CollectionService:GetTagged("Crusher")) do
-			if crusher:IsA("BasePart") and crusher:IsDescendantOf(workspace) then
+			if crusher:IsA("BasePart") and crusher:IsDescendantOf(Workspace) then
 				updateCrusher(crusher, elapsed)
 			end
 		end
 
 		for _, spinner in ipairs(CollectionService:GetTagged("SpinnerBar")) do
-			if spinner:IsA("BasePart") and spinner:IsDescendantOf(workspace) then
+			if spinner:IsA("BasePart") and spinner:IsDescendantOf(Workspace) then
 				updateSpinner(spinner, elapsed)
 			end
 		end

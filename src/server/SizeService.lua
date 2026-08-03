@@ -49,8 +49,8 @@ local function upgradeConfigByKey(upgradeKey: string): { [string]: any }?
 	return nil
 end
 
-local GROWTH_UPGRADE = upgradeConfigByKey("GrowthUpgrade")
-local JUMP_UPGRADE = upgradeConfigByKey("JumpUpgrade")
+local growthUpgrade = upgradeConfigByKey("GrowthUpgrade")
+local jumpUpgrade = upgradeConfigByKey("JumpUpgrade")
 
 type PlayerState = {
 	currentSize: number,
@@ -88,9 +88,9 @@ end
 local function totalGrowthMultiplier(player: Player, state: PlayerState): number
 	local multiplier = SizeFormula.growthMultiplier(state.rebirths, passFlagsFor(player))
 
-	if GROWTH_UPGRADE ~= nil then
+	if growthUpgrade ~= nil then
 		local level = attributeNumber(player, "UpgradeGrowthUpgrade")
-		multiplier *= 1 + level * GROWTH_UPGRADE.bonusPerLevel
+		multiplier *= 1 + level * growthUpgrade.bonusPerLevel
 	end
 
 	multiplier *= 1 + attributeNumber(player, "PetGrowthBonus")
@@ -163,9 +163,9 @@ local function applyCharacterScale(player: Player, state: PlayerState)
 	if ShopService.effectActive(player, "JumpPotion") then
 		jumpBonus *= 1.25
 	end
-	if JUMP_UPGRADE ~= nil then
+	if jumpUpgrade ~= nil then
 		local level = attributeNumber(player, "UpgradeJumpUpgrade")
-		jumpBonus *= 1 + level * JUMP_UPGRADE.bonusPerLevel
+		jumpBonus *= 1 + level * jumpUpgrade.bonusPerLevel
 	end
 
 	humanoid.UseJumpPower = true
@@ -199,11 +199,11 @@ local function findPlayersOnPads(tag: string): { [Player]: BasePart }
 	local playersOnPads = {}
 
 	for _, pad in ipairs(CollectionService:GetTagged(tag)) do
-		if pad:IsA("BasePart") and pad:IsDescendantOf(workspace) then
+		if pad:IsA("BasePart") and pad:IsDescendantOf(Workspace) then
 			local region = pad.Size + Vector3.new(0, PAD_DETECTION_HEIGHT, 0)
 			local center = pad.CFrame * CFrame.new(0, PAD_DETECTION_HEIGHT / 2, 0)
 
-			for _, part in ipairs(workspace:GetPartBoundsInBox(center, region)) do
+			for _, part in ipairs(Workspace:GetPartBoundsInBox(center, region)) do
 				local character = part.Parent
 				if character ~= nil then
 					local player = Players:GetPlayerFromCharacter(character)

@@ -115,7 +115,7 @@ function GateService.start()
 		local now = os.clock()
 		for _, tag in ipairs({ SIZE_GATE_TAG, SQUEEZE_CRACK_TAG }) do
 			for _, barrier in ipairs(CollectionService:GetTagged(tag)) do
-				if barrier:IsA("BasePart") and barrier:IsDescendantOf(workspace) then
+				if barrier:IsA("BasePart") and barrier:IsDescendantOf(Workspace) then
 					updateBarrier(barrier, now)
 				end
 			end

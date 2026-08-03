@@ -15,6 +15,7 @@
 local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
@@ -38,7 +39,41 @@ local PORTAL_COLOR = Color3.fromRGB(97, 255, 66)
 local COIN_COLOR = Color3.fromRGB(253, 203, 110)
 local CHECKPOINT_COLOR = Color3.fromRGB(0, 206, 201)
 
-local MapGenerator = {}
+-- Per-world identity used by the egg capsules and decorations, so every
+-- world reads as its own place the moment you walk in.
+local WORLD_THEMES = {
+	{
+		eggMaterial = Enum.Material.Grass,
+		accent = Color3.fromRGB(120, 224, 76),
+		pedestalColor = Color3.fromRGB(88, 62, 41),
+	},
+	{
+		eggMaterial = Enum.Material.DiamondPlate,
+		accent = Color3.fromRGB(116, 185, 255),
+		pedestalColor = Color3.fromRGB(99, 110, 114),
+	},
+	{
+		eggMaterial = Enum.Material.CrackedLava,
+		accent = Color3.fromRGB(255, 118, 33),
+		pedestalColor = Color3.fromRGB(45, 45, 45),
+	},
+	{
+		eggMaterial = Enum.Material.Ice,
+		accent = Color3.fromRGB(224, 238, 255),
+		pedestalColor = Color3.fromRGB(190, 210, 255),
+	},
+}
+
+-- Pastel palette for the stage strips that give classic obbies their
+-- candy-striped look.
+local STAGE_STRIP_COLORS = {
+	Color3.fromRGB(255, 154, 162),
+	Color3.fromRGB(255, 183, 121),
+	Color3.fromRGB(253, 255, 171),
+	Color3.fromRGB(158, 240, 155),
+	Color3.fromRGB(154, 206, 255),
+	Color3.fromRGB(216, 178, 255),
+}
 
 local function createPart(properties: { [string]: any }): BasePart
 	local part = Instance.new("Part")
@@ -100,31 +135,6 @@ local function addOutline(part: BasePart, color: Color3)
 	highlight.Parent = part
 end
 
--- Per-world identity used by the egg capsules and decorations, so every
--- world reads as its own place the moment you walk in.
-local WORLD_THEMES = {
-	{
-		eggMaterial = Enum.Material.Grass,
-		accent = Color3.fromRGB(120, 224, 76),
-		pedestalColor = Color3.fromRGB(88, 62, 41),
-	},
-	{
-		eggMaterial = Enum.Material.DiamondPlate,
-		accent = Color3.fromRGB(116, 185, 255),
-		pedestalColor = Color3.fromRGB(99, 110, 114),
-	},
-	{
-		eggMaterial = Enum.Material.CrackedLava,
-		accent = Color3.fromRGB(255, 118, 33),
-		pedestalColor = Color3.fromRGB(45, 45, 45),
-	},
-	{
-		eggMaterial = Enum.Material.Ice,
-		accent = Color3.fromRGB(224, 238, 255),
-		pedestalColor = Color3.fromRGB(190, 210, 255),
-	},
-}
-
 local function createPad(parent: Instance, tag: string, position: Vector3, color: Color3)
 	local pad = createPart({
 		Name = tag,
@@ -178,7 +188,7 @@ end
 
 --[[
 	The portal proper is a flat green disc; the swirling rings and
-	particles around it are drawn client-side by PortalFx so every player
+	particles around it are drawn client-side by PortalEffects so every player
 	gets the full effect at local-only cost.
 ]]
 local function createPortal(parent: Instance, worldIndex: number, minZ: number)
@@ -625,7 +635,12 @@ end
 	its CrushSize smash through. Built as a main rock with satellite
 	rocks and dark crack seams so it reads as breakable at a glance.
 ]]
-local function createBoulder(parent: Instance, position: Vector3, crushSize: number, accent: Color3)
+local function createBoulder(
+	parent: Instance,
+	position: Vector3,
+	crushSize: number,
+	accentColor: Color3
+)
 	local boulder = createPart({
 		Name = "CrushBoulder",
 		Shape = Enum.PartType.Ball,
@@ -666,7 +681,7 @@ local function createBoulder(parent: Instance, position: Vector3, crushSize: num
 		})
 	end
 
-	addBillboard(boulder, string.format("SMASH -- Size %d", crushSize), accent, 7)
+	addBillboard(boulder, string.format("SMASH -- Size %d", crushSize), accentColor, 7)
 end
 
 --[[
@@ -737,11 +752,11 @@ local function createPlateBridge(parent: Instance, worldIndex: number, minZ: num
 	local baseX = 38
 	local platformY = WorldLayout.baseY + 8
 
-	for _, spec in ipairs({ { minZ + 148, "NearPlatform" }, { minZ + 176, "FarPlatform" } }) do
+	for _, platform in ipairs({ { minZ + 148, "NearPlatform" }, { minZ + 176, "FarPlatform" } }) do
 		createPart({
-			Name = spec[2],
+			Name = platform[2],
 			Size = Vector3.new(14, 1.2, 14),
-			Position = Vector3.new(baseX, platformY, spec[1]),
+			Position = Vector3.new(baseX, platformY, platform[1]),
 			Color = Color3.fromRGB(99, 110, 114),
 			Material = Enum.Material.Metal,
 			Parent = parent,
@@ -819,17 +834,6 @@ local function createPlateBridge(parent: Instance, worldIndex: number, minZ: num
 		)
 	end
 end
-
--- Pastel palette for the stage strips that give classic obbies their
--- candy-striped look.
-local STAGE_STRIP_COLORS = {
-	Color3.fromRGB(255, 154, 162),
-	Color3.fromRGB(255, 183, 121),
-	Color3.fromRGB(253, 255, 171),
-	Color3.fromRGB(158, 240, 155),
-	Color3.fromRGB(154, 206, 255),
-	Color3.fromRGB(216, 178, 255),
-}
 
 --[[
 	The classic obby vocabulary, all readable at a glance: hurdle bars
@@ -1283,7 +1287,8 @@ local function buildWorldFlavor(parent: Instance, worldIndex: number, minZ: numb
 		})
 		createPad(parent, "ShrinkPad", Vector3.new(0, 0.5, minZ + 123), SHRINK_PAD_COLOR)
 	elseif worldIndex == 3 then
-		for _, patch in ipairs({ { -14, 120 }, { 10, 128 }, { -6, 150 }, { 18, 158 }, { 0, 166 } }) do
+		local hazardPatches = { { -14, 120 }, { 10, 128 }, { -6, 150 }, { 18, 158 }, { 0, 166 } }
+		for _, patch in ipairs(hazardPatches) do
 			local hazard = createPart({
 				Name = "Hazard",
 				Size = Vector3.new(12, 0.4, 12),
@@ -1415,8 +1420,8 @@ local function buildWorld(parent: Instance, worldIndex: number)
 		createSpinnerBar(parent, worldIndex, minZ, 120)
 	end
 
-	-- Section A -- grow: pads, a few coins, then a gate that demands
-	-- real growth for this world.
+	-- The grow leg: pads and a few coins, then a gate that demands real
+	-- growth for this world.
 	for _, padX in ipairs({ -16, 0, 16 }) do
 		createPad(parent, "GrowPad", Vector3.new(padX, 0.5, minZ + 52), GROW_PAD_COLOR)
 	end
@@ -1435,14 +1440,14 @@ local function buildWorld(parent: Instance, worldIndex: number)
 	)
 	createCheckpoint(parent, worldIndex, 1, Vector3.new(0, 0.5, minZ + 88))
 
-	-- Section B -- shrink: a shrink pad, a crack, and world flavor that
+	-- The shrink leg: a shrink pad, a crack, and world flavor that
 	-- punishes staying big.
 	createPad(parent, "ShrinkPad", Vector3.new(0, 0.5, minZ + 96), SHRINK_PAD_COLOR)
 	createBarrierWall(parent, minZ + 110, 5, 5, "SqueezeCrack", "MaxAllowedSize", 15, CRACK_COLOR)
 	createCheckpoint(parent, worldIndex, 2, Vector3.new(0, 0.5, minZ + 140))
 
-	-- Section C -- skill and payout: flavor obstacles, the coin ledge,
-	-- and pads to get big for the exit wall.
+	-- The skill-and-payout leg: flavor obstacles, the coin ledge, and
+	-- pads to get big for the exit wall.
 	buildWorldFlavor(parent, worldIndex, minZ)
 	createCoinLedge(parent, worldIndex, minZ, if worldIndex % 2 == 0 then 44 else -44)
 	for _, coinZ in ipairs({ 148, 156, 164 }) do
@@ -1491,7 +1496,7 @@ local function setupEnvironment()
 		sunRays.Parent = Lighting
 	end
 
-	local terrain = workspace:FindFirstChildOfClass("Terrain")
+	local terrain = Workspace:FindFirstChildOfClass("Terrain")
 	if terrain ~= nil and terrain:FindFirstChildOfClass("Clouds") == nil then
 		local clouds = Instance.new("Clouds")
 		clouds.Cover = 0.6
@@ -1503,12 +1508,14 @@ end
 -- Leftover template spawns (like the Baseplate's) would drop players
 -- outside the borders, so switch them off rather than delete anything.
 local function disableForeignSpawns()
-	for _, descendant in ipairs(workspace:GetDescendants()) do
+	for _, descendant in ipairs(Workspace:GetDescendants()) do
 		if descendant:IsA("SpawnLocation") then
 			descendant.Enabled = false
 		end
 	end
 end
+
+local MapGenerator = {}
 
 function MapGenerator.generate()
 	if #CollectionService:GetTagged("GrowPad") > 0 then
@@ -1538,7 +1545,7 @@ function MapGenerator.generate()
 	spawnLocation.Color = Color3.fromRGB(245, 246, 250)
 	spawnLocation.Parent = map
 
-	map.Parent = workspace
+	map.Parent = Workspace
 end
 
 return MapGenerator

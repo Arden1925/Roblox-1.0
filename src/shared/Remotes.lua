@@ -28,20 +28,26 @@ local REMOTE_CLASS_BY_NAME = {
 local Remotes = {}
 
 --[[
-	Creates the remotes folder and every declared remote. The server calls
-	this exactly once during boot, before any client can ask for them.
+	Creates the remotes folder and every declared remote, returning them
+	by name so the server can wire handlers without ever yielding. The
+	server calls this exactly once during boot, before any client can
+	ask for them.
 ]]
-function Remotes.createAll()
+function Remotes.createAll(): { [string]: Instance }
 	local folder = Instance.new("Folder")
 	folder.Name = FOLDER_NAME
 
+	local remoteByName = {}
 	for name, className in pairs(REMOTE_CLASS_BY_NAME) do
 		local remote = Instance.new(className)
 		remote.Name = name
 		remote.Parent = folder
+		remoteByName[name] = remote
 	end
 
 	folder.Parent = ReplicatedStorage
+
+	return remoteByName
 end
 
 --[[

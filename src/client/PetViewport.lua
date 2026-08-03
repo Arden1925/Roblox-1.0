@@ -11,7 +11,7 @@ local RunService = game:GetService("RunService")
 local Client = script.Parent
 local UiBuilder = require(Client.UiBuilder)
 
-local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Shared = ReplicatedStorage.Shared
 local PetModels = require(Shared.PetModels)
 
 local SPIN_SPEED = 1.2

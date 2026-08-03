@@ -13,7 +13,7 @@ local Client = script.Parent
 local Toast = require(Client.Toast)
 local UiBuilder = require(Client.UiBuilder)
 
-local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
 
 local BAR_TWEEN_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)

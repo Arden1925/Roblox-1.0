@@ -65,9 +65,11 @@ function UiBuilder.stroke(instance: Instance, color: Color3, thickness: number):
 	return stroke :: UIStroke
 end
 
--- Cartoon hover: the button bounces up in size with a little tilt, then
--- springs back. UIScale means the button's own Size (and any layout
--- using it) is never disturbed.
+--[[
+	Cartoon hover: the button bounces up in size with a little tilt, then
+	springs back. UIScale means the button's own Size (and any layout
+	using it) is never disturbed.
+]]
 function UiBuilder.hoverPop(button: GuiButton)
 	local scale = UiBuilder.create("UIScale", {
 		Scale = 1,
@@ -87,8 +89,10 @@ function UiBuilder.hoverPop(button: GuiButton)
 	end)
 end
 
--- Springy pop for opening windows; returns the tween so callers can
--- chain on Completed if they need to.
+--[[
+	Springy pop for opening windows; returns the tween so callers can
+	chain on Completed if they need to.
+]]
 function UiBuilder.popOpen(window: GuiObject): Tween
 	local scale = window:FindFirstChildOfClass("UIScale")
 	if scale == nil then
@@ -303,8 +307,10 @@ function UiBuilder.cartoonizeWindow(window: GuiObject, headerColor: Color3, head
 	UiBuilder.cartoonify(window)
 end
 
--- The glossy shine: a soft white swoosh in the top-left and a small dot
--- in the bottom-right, like light on candy. Purely decorative.
+--[[
+	The glossy shine: a soft white swoosh in the top-left and a small dot
+	in the bottom-right, like light on candy. Purely decorative.
+]]
 function UiBuilder.gloss(card: GuiObject)
 	if card:FindFirstChild("GlossShine") ~= nil then
 		return

@@ -13,7 +13,7 @@ local Workspace = game:GetService("Workspace")
 local Client = script.Parent
 local UiBuilder = require(Client.UiBuilder)
 
-local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
 local SizeFormula = require(Shared.SizeFormula)
 
@@ -59,8 +59,10 @@ local function createLabel(barrier: BasePart): TextLabel
 	return label :: TextLabel
 end
 
--- Mirrors the server's crack allowance (Super Squeeze pass or an active
--- Slick Coating) so the prompt never contradicts what the gate will do.
+--[[
+	Mirrors the server's crack allowance (Super Squeeze pass or an active
+	Slick Coating) so the prompt never contradicts what the gate will do.
+]]
 local function crackAllowance(): number
 	if localPlayer:GetAttribute("OwnsSuperSqueeze") == true then
 		return GameConfig.passEffects.superSqueezeAllowance
@@ -143,7 +145,7 @@ function GatePrompt.start()
 		end
 
 		for barrier, label in pairs(labelByBarrier) do
-			if barrier:IsDescendantOf(workspace) then
+			if barrier:IsDescendantOf(Workspace) then
 				updateLabel(barrier, label, currentSize)
 			end
 		end

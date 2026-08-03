@@ -9,6 +9,7 @@
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local PORTAL_TAG = "Portal"
 
@@ -33,7 +34,7 @@ local effects: { [BasePart]: PortalEffect } = {}
 
 local localPlayer = Players.LocalPlayer
 
-local PortalFx = {}
+local PortalEffects = {}
 
 local function createLocalPart(properties: { [string]: any }): BasePart
 	local part = Instance.new("Part")
@@ -61,7 +62,7 @@ local function buildEffect(portal: BasePart)
 	end
 
 	local container = Instance.new("Folder")
-	container.Name = "PortalFx"
+	container.Name = "PortalEffects"
 
 	local rings = {}
 	for ringIndex = 1, 3 do
@@ -99,7 +100,7 @@ local function buildEffect(portal: BasePart)
 	light.Range = 14
 	light.Parent = portal
 
-	container.Parent = workspace
+	container.Parent = Workspace
 
 	effects[portal] = {
 		base = portal.CFrame,
@@ -153,7 +154,7 @@ local function updateEffect(effect: PortalEffect, elapsed: number)
 	end
 end
 
-function PortalFx.start()
+function PortalEffects.start()
 	for _, portal in ipairs(CollectionService:GetTagged(PORTAL_TAG)) do
 		if portal:IsA("BasePart") then
 			buildEffect(portal)
@@ -178,4 +179,4 @@ function PortalFx.start()
 	end)
 end
 
-return PortalFx
+return PortalEffects

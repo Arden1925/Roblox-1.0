@@ -8,6 +8,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
 
 local Server = script.Parent
 local ShopService = require(Server.ShopService)
@@ -153,22 +154,22 @@ local function playCinematic(player: Player)
 		Parent = machine,
 	})
 
-	machine.Parent = workspace
+	machine.Parent = Workspace
 
-	-- Act 1: the tube drops and seals the player in.
+	-- The tube drops and seals the player in.
 	TweenService:Create(tube, TweenInfo.new(0.6, Enum.EasingStyle.Bounce), {
 		CFrame = center * CFrame.new(0, 2.5, 0) * CFrame.Angles(0, 0, math.rad(90)),
 	}):Play()
 	task.wait(0.8)
 
-	-- Act 2: the syringe draws the growth out -- the fluid grows as the
-	-- player visibly shrinks.
+	-- The syringe draws the growth out -- the fluid grows as the player
+	-- visibly shrinks.
 	TweenService:Create(fluid, TweenInfo.new(1.2, Enum.EasingStyle.Quad), {
 		Size = Vector3.new(2.4, 1.1, 1.1),
 	}):Play()
 	SizeService.forceShrink(player)
 
-	-- Act 3: coins spiral up out of the player into the funnel.
+	-- Coins spiral up out of the player into the funnel.
 	for orbIndex = 1, 8 do
 		task.delay(orbIndex * 0.12, function()
 			local orb = createPart({
@@ -195,7 +196,7 @@ local function playCinematic(player: Player)
 
 	task.wait(GameConfig.rebirth.cinematicSeconds - 0.8)
 
-	-- Release: the tube lifts away and the machine breaks down.
+	-- The tube lifts away and the machine breaks down.
 	TweenService:Create(tube, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {
 		CFrame = center * CFrame.new(0, 22, 0) * CFrame.Angles(0, 0, math.rad(90)),
 		Transparency = 1,

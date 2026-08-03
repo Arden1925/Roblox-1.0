@@ -12,7 +12,7 @@ local Client = script.Parent
 local Toast = require(Client.Toast)
 local UiBuilder = require(Client.UiBuilder)
 
-local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
 local Remotes = require(Shared.Remotes)
 local SizeFormula = require(Shared.SizeFormula)
@@ -22,6 +22,12 @@ local ROW_COLOR = Color3.fromRGB(52, 46, 75)
 local ACCENT_COLOR = Color3.fromRGB(190, 120, 255)
 local READY_COLOR = Color3.fromRGB(76, 209, 55)
 local LOCKED_COLOR = Color3.fromRGB(72, 84, 96)
+
+local PROTECTED_NAMES = {
+	Title = true,
+	CloseButton = true,
+	HeaderBanner = true,
+}
 
 local localPlayer = Players.LocalPlayer
 
@@ -54,12 +60,6 @@ local function perkRows(rebirths: number): { { string } }
 		{ "Max Size", "keeps growing", "resets to 0" },
 	}
 end
-
-local PROTECTED_NAMES = {
-	Title = true,
-	CloseButton = true,
-	HeaderBanner = true,
-}
 
 local function rebuild(container: Frame)
 	for _, child in ipairs(container:GetChildren()) do
@@ -109,7 +109,8 @@ local function rebuild(container: Frame)
 	})
 	UiBuilder.round(fill, 6)
 
-	-- The NOW vs AFTER table: three columns, one row per perk.
+	-- Perks render as a NOW vs AFTER table so the player sees exactly
+	-- what a rebirth buys before committing.
 	local headerRow = UiBuilder.create("Frame", {
 		Name = "HeaderRow",
 		Position = UDim2.new(0, 16, 0, 94),

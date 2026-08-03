@@ -16,7 +16,7 @@ local PetViewport = require(Client.PetViewport)
 local Toast = require(Client.Toast)
 local UiBuilder = require(Client.UiBuilder)
 
-local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
 local PetCatalog = require(Shared.PetCatalog)
 local PetModels = require(Shared.PetModels)
@@ -110,7 +110,8 @@ local function fillPetsTab(page: ScrollingFrame)
 			UiBuilder.pulse(cardStroke)
 		end
 
-		-- The 3D pet, spinning in its frame; click it for a happy twirl.
+		-- A live 3D viewport instead of a flat icon; clicking it rewards
+		-- the player with a happy twirl.
 		local viewportButton = UiBuilder.create("TextButton", {
 			Name = "ViewportButton",
 			Position = UDim2.new(0, 8, 0, 6),
@@ -291,7 +292,7 @@ local function fillSoonTab(page: ScrollingFrame)
 	})
 end
 
-local FILLERS = {
+local fillByTabName = {
 	Pets = fillPetsTab,
 	Boosts = fillBoostsTab,
 	Soon = fillSoonTab,
@@ -406,7 +407,7 @@ function BackpackGui.start()
 				else UDim2.new(0, 220, 0, 110)
 		end
 
-		FILLERS[activeTab](page)
+		fillByTabName[activeTab](page)
 
 		for tabName, tabButton in pairs(tabButtons) do
 			tabButton.BackgroundColor3 = if tabName == activeTab then ACCENT_COLOR else CARD_COLOR

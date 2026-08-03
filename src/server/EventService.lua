@@ -31,7 +31,7 @@ local function padsInWorld(worldIndex: number): { BasePart }
 	for _, pad in ipairs(CollectionService:GetTagged("GrowPad")) do
 		if
 			pad:IsA("BasePart")
-			and pad:IsDescendantOf(workspace)
+			and pad:IsDescendantOf(Workspace)
 			and pad.Position.Z >= minZ
 			and pad.Position.Z < maxZ
 		then
@@ -113,8 +113,8 @@ local function spawnStar()
 		beam:Destroy()
 	end)
 
-	star.Parent = workspace
-	beam.Parent = workspace
+	star.Parent = Workspace
+	beam.Parent = Workspace
 
 	task.delay(STAR_LIFETIME_SECONDS, function()
 		star:Destroy()

@@ -16,7 +16,7 @@ local PetViewport = require(Client.PetViewport)
 local Toast = require(Client.Toast)
 local UiBuilder = require(Client.UiBuilder)
 
-local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
 local PetCatalog = require(Shared.PetCatalog)
 local PetModels = require(Shared.PetModels)
@@ -27,7 +27,8 @@ local CARD_COLOR = Color3.fromRGB(47, 54, 64)
 local COIN_COLOR = Color3.fromRGB(253, 203, 110)
 local ROBUX_COLOR = Color3.fromRGB(0, 162, 255)
 
-local SHAKE_INFO = TweenInfo.new(0.08, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, 5, true)
+local SHAKE_TWEEN_INFO =
+	TweenInfo.new(0.08, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, 5, true)
 
 local localPlayer = Players.LocalPlayer
 
@@ -102,13 +103,14 @@ local function playReveal(window: Frame, petId: string)
 		Parent = overlay,
 	})
 
-	local shake = TweenService:Create(egg, SHAKE_INFO, { Rotation = 14 })
+	local shake = TweenService:Create(egg, SHAKE_TWEEN_INFO, { Rotation = 14 })
 	shake:Play()
 
 	shake.Completed:Connect(function()
 		egg.Visible = false
 
-		-- Burst: two rings of the pet's color expanding out of the egg.
+		-- Two rings in the pet's color burst outward to sell the moment
+		-- the shell gives way.
 		for ringIndex = 1, 2 do
 			local ring = UiBuilder.create("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
@@ -134,7 +136,8 @@ local function playReveal(window: Frame, petId: string)
 			):Play()
 		end
 
-		-- The pet itself, in 3D, spinning fast out of the shell.
+		-- The pet reveals in 3D and spins fast so the payoff feels alive
+		-- instead of a flat picture.
 		local viewportHolder = UiBuilder.create("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.new(0.5, 0, 0.38, 0),
@@ -165,7 +168,8 @@ local function playReveal(window: Frame, petId: string)
 			Parent = overlay,
 		}) :: TextLabel
 
-		-- Top tiers get the full rainbow-shine treatment.
+		-- Rainbow shine is reserved for the top tiers so the effect stays
+		-- special.
 		if PetModels.tierRank(info.tierName) >= 5 then
 			UiBuilder.shineText(reveal)
 		end
@@ -333,7 +337,8 @@ local function openForWorld(window: Frame, worldIndex: number)
 		Size = UDim2.new(1, -20, 0, 44),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
-		Text = "The royal egg holds 3 exclusive pets, stronger than anything the coin egg hatches.",
+		Text = "The royal egg holds 3 exclusive pets, stronger than anything"
+			.. " the coin egg hatches.",
 		TextColor3 = Color3.fromRGB(178, 190, 195),
 		TextSize = 13,
 		TextWrapped = true,
