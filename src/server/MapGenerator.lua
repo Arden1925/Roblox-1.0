@@ -820,6 +820,301 @@ local function createPlateBridge(parent: Instance, worldIndex: number, minZ: num
 	end
 end
 
+-- Pastel palette for the stage strips that give classic obbies their
+-- candy-striped look.
+local STAGE_STRIP_COLORS = {
+	Color3.fromRGB(255, 154, 162),
+	Color3.fromRGB(255, 183, 121),
+	Color3.fromRGB(253, 255, 171),
+	Color3.fromRGB(158, 240, 155),
+	Color3.fromRGB(154, 206, 255),
+	Color3.fromRGB(216, 178, 255),
+}
+
+--[[
+	The classic obby vocabulary, all readable at a glance: hurdle bars
+	you jump, slalom gates you weave, laser strips you step over, and a
+	rotating spinner bar. Requirements stay gentle; the growth gates are
+	still what really pace the game.
+]]
+local function createHurdleRow(parent: Instance, minZ: number, rowZ: number, count: number)
+	for hurdleIndex = 1, count do
+		createPart({
+			Name = "Hurdle",
+			Size = Vector3.new(20, 2, 1.5),
+			Position = Vector3.new(0, WorldLayout.baseY + 1, minZ + rowZ + hurdleIndex * 9),
+			Color = Color3.fromRGB(255, 121, 34),
+			Material = Enum.Material.SmoothPlastic,
+			Parent = parent,
+		})
+	end
+end
+
+local function createSlalomGates(parent: Instance, minZ: number, startZ: number)
+	for gateIndex = 1, 4 do
+		local sideX = if gateIndex % 2 == 0 then 7 else -7
+
+		createPart({
+			Name = "SlalomPillar",
+			Size = Vector3.new(10, 7, 2),
+			Position = Vector3.new(sideX, WorldLayout.baseY + 3.5, minZ + startZ + gateIndex * 8),
+			Color = STAGE_STRIP_COLORS[gateIndex % #STAGE_STRIP_COLORS + 1],
+			Material = Enum.Material.SmoothPlastic,
+			Parent = parent,
+		})
+	end
+end
+
+local function createLaserStrips(parent: Instance, worldIndex: number, minZ: number, rowZ: number)
+	for stripIndex = 1, 3 do
+		local strip = createPart({
+			Name = "Hazard",
+			Size = Vector3.new(22, 0.4, 1.2),
+			Position = Vector3.new(
+				0,
+				WorldLayout.baseY + 0.3,
+				minZ + rowZ + stripIndex * 7 + worldIndex
+			),
+			Color = Color3.fromRGB(255, 45, 60),
+			Material = Enum.Material.Neon,
+			CanCollide = false,
+			Parent = parent,
+		})
+
+		CollectionService:AddTag(strip, "Hazard")
+	end
+end
+
+local function createSpinnerBar(parent: Instance, worldIndex: number, minZ: number, spotZ: number)
+	createPart({
+		Name = "SpinnerPost",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(5, 1.6, 1.6),
+		CFrame = CFrame.new(0, WorldLayout.baseY + 2.5, minZ + spotZ)
+			* CFrame.Angles(0, 0, math.rad(90)),
+		Color = Color3.fromRGB(87, 96, 111),
+		Material = Enum.Material.Metal,
+		Parent = parent,
+	})
+
+	local bar = createPart({
+		Name = "SpinnerBar",
+		Size = Vector3.new(22, 1.2, 1.2),
+		Position = Vector3.new(0, WorldLayout.baseY + 1.6, minZ + spotZ),
+		Color = Color3.fromRGB(255, 71, 87),
+		Material = Enum.Material.Neon,
+		Parent = parent,
+	})
+
+	-- A touch faster every world; still a stroll to walk around.
+	bar:SetAttribute("SpinSpeed", 0.8 + worldIndex * 0.25)
+	CollectionService:AddTag(bar, "SpinnerBar")
+end
+
+-- Candy stage strips across the lane, so progress reads in colors the
+-- way the classic obbies do.
+local function createStageStrips(parent: Instance, minZ: number)
+	for stripIndex = 1, 6 do
+		createPart({
+			Name = "StageStrip",
+			Size = Vector3.new(WorldLayout.width, 0.15, 3),
+			Position = Vector3.new(0, WorldLayout.baseY + 0.08, minZ + 10 + stripIndex * 30),
+			Color = STAGE_STRIP_COLORS[stripIndex],
+			Material = Enum.Material.SmoothPlastic,
+			CanCollide = false,
+			Parent = parent,
+		})
+	end
+end
+
+--[[
+	One oversized landmark per world, floating near the border like the
+	giant donuts every famous obby hangs in its sky. Tagged Spinner so
+	they slowly turn.
+]]
+local function createGiantProp(parent: Instance, worldIndex: number, minZ: number)
+	local center = Vector3.new(52, WorldLayout.baseY + 26, minZ + 100)
+
+	if worldIndex == 1 then
+		local heart = createPart({
+			Name = "GiantFlower",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.new(6, 6, 6),
+			Position = center,
+			Color = Color3.fromRGB(255, 202, 58),
+			Material = Enum.Material.Neon,
+			CanCollide = false,
+			Parent = parent,
+		})
+		CollectionService:AddTag(heart, "Spinner")
+
+		for petalIndex = 1, 6 do
+			local angle = petalIndex * math.pi / 3
+			createPart({
+				Name = "GiantPetal",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.new(5, 5, 2),
+				Position = center + Vector3.new(math.cos(angle) * 5.5, math.sin(angle) * 5.5, 0),
+				Color = Color3.fromRGB(255, 121, 198),
+				Material = Enum.Material.SmoothPlastic,
+				CanCollide = false,
+				Parent = parent,
+			})
+		end
+	elseif worldIndex == 2 then
+		local gear = createPart({
+			Name = "GiantGear",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(2, 14, 14),
+			CFrame = CFrame.new(center),
+			Color = Color3.fromRGB(120, 130, 140),
+			Material = Enum.Material.Metal,
+			CanCollide = false,
+			Parent = parent,
+		})
+		CollectionService:AddTag(gear, "Spinner")
+
+		for toothIndex = 1, 6 do
+			local angle = toothIndex * math.pi / 3
+			createPart({
+				Name = "GearTooth",
+				Size = Vector3.new(2, 3, 3),
+				Position = center + Vector3.new(0, math.sin(angle) * 8, math.cos(angle) * 8),
+				Color = Color3.fromRGB(99, 110, 114),
+				Material = Enum.Material.Metal,
+				CanCollide = false,
+				Parent = parent,
+			})
+		end
+	elseif worldIndex == 3 then
+		local sun = createPart({
+			Name = "GiantEmber",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.new(12, 12, 12),
+			Position = center,
+			Color = Color3.fromRGB(255, 118, 33),
+			Material = Enum.Material.Neon,
+			CanCollide = false,
+			Parent = parent,
+		})
+		CollectionService:AddTag(sun, "Spinner")
+
+		local light = Instance.new("PointLight")
+		light.Color = Color3.fromRGB(255, 118, 33)
+		light.Brightness = 2
+		light.Range = 30
+		light.Parent = sun
+	else
+		-- The donut: a ring of glazed segments with sprinkle studs.
+		for segmentIndex = 1, 8 do
+			local angle = segmentIndex * math.pi / 4
+			local segment = createPart({
+				Name = "DonutSegment",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.new(5, 5, 5),
+				Position = center + Vector3.new(math.cos(angle) * 6.5, math.sin(angle) * 6.5, 0),
+				Color = Color3.fromRGB(255, 121, 198),
+				Material = Enum.Material.SmoothPlastic,
+				CanCollide = false,
+				Parent = parent,
+			})
+
+			if segmentIndex == 1 then
+				CollectionService:AddTag(segment, "Spinner")
+			end
+
+			createPart({
+				Name = "Sprinkle",
+				Size = Vector3.new(0.4, 1.4, 0.4),
+				CFrame = CFrame.new(
+					center + Vector3.new(math.cos(angle) * 6.5, math.sin(angle) * 6.5 + 2.4, 0)
+				) * CFrame.Angles(0, 0, angle),
+				Color = STAGE_STRIP_COLORS[segmentIndex % #STAGE_STRIP_COLORS + 1],
+				Material = Enum.Material.Neon,
+				CanCollide = false,
+				Parent = parent,
+			})
+		end
+	end
+end
+
+-- The welcome hub: an arch over the road out of spawn, benches, and a
+-- lamppost, so the first thing players see is a place, not a floor.
+local function createSpawnHub(parent: Instance, minZ: number)
+	for _, sideX in ipairs({ -10, 10 }) do
+		createPart({
+			Name = "ArchPillar",
+			Size = Vector3.new(2.4, 12, 2.4),
+			Position = Vector3.new(sideX, WorldLayout.baseY + 6, minZ + 28),
+			Color = Color3.fromRGB(255, 255, 255),
+			Material = Enum.Material.Marble,
+			Parent = parent,
+		})
+	end
+
+	local archTop = createPart({
+		Name = "ArchTop",
+		Size = Vector3.new(26, 3, 3),
+		Position = Vector3.new(0, WorldLayout.baseY + 13, minZ + 28),
+		Color = Color3.fromRGB(76, 209, 55),
+		Material = Enum.Material.SmoothPlastic,
+		Parent = parent,
+	})
+	addBillboard(archTop, "+1 SIZE ESCAPE -- GROW & GO!", Color3.fromRGB(255, 255, 255), 4)
+
+	for _, benchSpot in ipairs({ { -14, 12 }, { 14, 12 } }) do
+		createPart({
+			Name = "BenchSeat",
+			Size = Vector3.new(6, 0.6, 2),
+			Position = Vector3.new(benchSpot[1], WorldLayout.baseY + 1.4, minZ + benchSpot[2]),
+			Color = Color3.fromRGB(150, 110, 66),
+			Material = Enum.Material.WoodPlanks,
+			Parent = parent,
+		})
+
+		for _, legX in ipairs({ -2.4, 2.4 }) do
+			createPart({
+				Name = "BenchLeg",
+				Size = Vector3.new(0.5, 1.4, 1.8),
+				Position = Vector3.new(
+					benchSpot[1] + legX,
+					WorldLayout.baseY + 0.7,
+					minZ + benchSpot[2]
+				),
+				Color = Color3.fromRGB(87, 96, 111),
+				Material = Enum.Material.Metal,
+				Parent = parent,
+			})
+		end
+	end
+
+	createPart({
+		Name = "LampPost",
+		Size = Vector3.new(0.6, 9, 0.6),
+		Position = Vector3.new(0, WorldLayout.baseY + 4.5, minZ + 6),
+		Color = Color3.fromRGB(45, 52, 54),
+		Material = Enum.Material.Metal,
+		Parent = parent,
+	})
+
+	local lampGlobe = createPart({
+		Name = "LampGlobe",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.new(2, 2, 2),
+		Position = Vector3.new(0, WorldLayout.baseY + 9.5, minZ + 6),
+		Color = Color3.fromRGB(255, 234, 167),
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = parent,
+	})
+
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(255, 234, 167)
+	light.Brightness = 1.5
+	light.Range = 22
+	light.Parent = lampGlobe
+end
+
 --[[
 	Per-world scenery so each world has its own vibe the moment you walk
 	in: a meadow with trees and flowers, an industrial pipe yard, a
@@ -1097,12 +1392,27 @@ local function buildWorld(parent: Instance, worldIndex: number)
 	createStation(parent, worldIndex, minZ)
 	createWorldDecor(parent, worldIndex, minZ)
 	createCrusher(parent, worldIndex, minZ)
+	createStageStrips(parent, minZ)
+	createGiantProp(parent, worldIndex, minZ)
 	if worldIndex % GameConfig.economy.mysteryMachineEveryNWorlds == 0 then
 		createMysteryMachine(parent, worldIndex, minZ)
 	end
 	if worldIndex == 1 then
 		createAfkPods(parent, minZ)
 		createGroupChest(parent, minZ)
+		createSpawnHub(parent, minZ)
+		createSlalomGates(parent, minZ, 116)
+		createHurdleRow(parent, minZ, 150, 2)
+	elseif worldIndex == 2 then
+		createHurdleRow(parent, minZ, 128, 3)
+		createSpinnerBar(parent, worldIndex, minZ, 165)
+	elseif worldIndex == 3 then
+		createLaserStrips(parent, worldIndex, minZ, 40)
+		createSpinnerBar(parent, worldIndex, minZ, 132)
+	else
+		createLaserStrips(parent, worldIndex, minZ, 40)
+		createSlalomGates(parent, minZ, 116)
+		createSpinnerBar(parent, worldIndex, minZ, 120)
 	end
 
 	-- Section A -- grow: pads, a few coins, then a gate that demands

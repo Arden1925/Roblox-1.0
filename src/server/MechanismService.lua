@@ -38,6 +38,7 @@ local bridgeExtended: { [BasePart]: boolean } = {}
 local shatteredBoulders: { [BasePart]: boolean } = {}
 local playersInUpdraft: { [Player]: boolean } = {}
 local crusherBaseCFrames: { [BasePart]: CFrame } = {}
+local spinnerBaseCFrames: { [BasePart]: CFrame } = {}
 local crushDebounce: { [Player]: number } = {}
 
 local MechanismService = {}
@@ -250,12 +251,55 @@ local function updateCrusher(crusher: BasePart, now: number)
 	end
 end
 
+-- The classic rotating bar: sweep around a post, jump it or step back.
+-- Touching it costs Current Size only, like every hazard.
+local function updateSpinner(spinner: BasePart, elapsed: number)
+	local spinSpeed = spinner:GetAttribute("SpinSpeed")
+	if typeof(spinSpeed) ~= "number" then
+		return
+	end
+
+	if spinnerBaseCFrames[spinner] == nil then
+		spinnerBaseCFrames[spinner] = spinner.CFrame
+	end
+
+	spinner.CFrame = spinnerBaseCFrames[spinner] * CFrame.Angles(0, elapsed * spinSpeed, 0)
+end
+
+local function watchSpinner(spinner: BasePart)
+	spinner.Touched:Connect(function(hit)
+		local player = Players:GetPlayerFromCharacter(hit.Parent)
+		if player == nil then
+			return
+		end
+
+		local now = os.clock()
+		local debounceUntil = crushDebounce[player]
+		if debounceUntil == nil or now > debounceUntil then
+			crushDebounce[player] = now + CRUSH_DEBOUNCE_SECONDS
+			SizeService.forceShrink(player)
+		end
+	end)
+end
+
 function MechanismService.start()
 	for _, boulder in ipairs(CollectionService:GetTagged("CrushBoulder")) do
 		if boulder:IsA("BasePart") then
 			watchBoulder(boulder)
 		end
 	end
+
+	for _, spinner in ipairs(CollectionService:GetTagged("SpinnerBar")) do
+		if spinner:IsA("BasePart") then
+			watchSpinner(spinner)
+		end
+	end
+
+	CollectionService:GetInstanceAddedSignal("SpinnerBar"):Connect(function(spinner)
+		if spinner:IsA("BasePart") then
+			watchSpinner(spinner)
+		end
+	end)
 
 	CollectionService:GetInstanceAddedSignal("CrushBoulder"):Connect(function(boulder)
 		if boulder:IsA("BasePart") then
@@ -294,6 +338,12 @@ function MechanismService.start()
 		for _, crusher in ipairs(CollectionService:GetTagged("Crusher")) do
 			if crusher:IsA("BasePart") and crusher:IsDescendantOf(workspace) then
 				updateCrusher(crusher, elapsed)
+			end
+		end
+
+		for _, spinner in ipairs(CollectionService:GetTagged("SpinnerBar")) do
+			if spinner:IsA("BasePart") and spinner:IsDescendantOf(workspace) then
+				updateSpinner(spinner, elapsed)
 			end
 		end
 	end)
