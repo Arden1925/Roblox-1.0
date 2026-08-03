@@ -26,9 +26,9 @@ local TEXT_WHITE = Color3.fromRGB(255, 255, 255)
 
 -- Sticker text needs a light fill to read against the navy outline.
 -- Roblox's default text color is black, and a few screens picked their
--- own dark grays; every intentional accent (gold, greens, tier colors)
--- sits above 0.4 luminance, every broken fill below 0.2, so this floor
--- separates them with room to spare.
+-- own dark grays, so fills below this floor are recolored to white.
+-- Text that is dark on purpose (dark-on-gold labels) opts out by
+-- setting the KeepTextColor attribute before parenting.
 local DARK_TEXT_LUMINANCE_FLOOR = 0.3
 
 local UiBuilder = {}
@@ -199,7 +199,8 @@ local function cartoonizeElement(element: Instance)
 
 		local fill = textElement.TextColor3
 		local luminance = 0.299 * fill.R + 0.587 * fill.G + 0.114 * fill.B
-		if luminance < DARK_TEXT_LUMINANCE_FLOOR then
+		local keepColor = textElement:GetAttribute("KeepTextColor") == true
+		if luminance < DARK_TEXT_LUMINANCE_FLOOR and not keepColor then
 			textElement.TextColor3 = TEXT_WHITE
 		end
 

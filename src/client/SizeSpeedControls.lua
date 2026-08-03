@@ -40,6 +40,8 @@ local MELT_DELAY_SECONDS = 0.45
 local RECOLOR_INFO = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local ICICLE_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local ICICLE_HEIGHTS = { 14, 9, 6 }
+local ICICLE_WIDTH = 5
+local HALO_DIAMETER = 36
 
 local localPlayer = Players.LocalPlayer
 
@@ -56,9 +58,10 @@ type SliderEffects = {
 
 --[[
 	Effect rig for the speed slider: a halo that lights up behind the
-	handle when charging, and icicles that grow off it when frozen.
-	Everything is parented to the handle so the effects follow the drag
-	instead of flying across the panel.
+	handle when charging, and icicles that grow off it when frozen. The
+	icicles and particles ride on the handle; the halo cannot, because a
+	child always renders in front of its parent under Sibling ZIndex
+	rules, so it sits on the track and follows the handle by signal.
 ]]
 local function createSliderEffects(sliderHolder: Frame): SliderEffects?
 	local track = sliderHolder:FindFirstChild("SliderTrack")
@@ -80,14 +83,19 @@ local function createSliderEffects(sliderHolder: Frame): SliderEffects?
 	local halo = UiBuilder.create("Frame", {
 		Name = "EffectHalo",
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		Size = UDim2.new(1, 14, 1, 14),
+		Position = handle.Position,
+		Size = UDim2.new(0, HALO_DIAMETER, 0, HALO_DIAMETER),
 		BackgroundColor3 = GLOW_EDGE,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Parent = handle,
+		ZIndex = -1,
+		Parent = track,
 	}) :: Frame
-	UiBuilder.round(halo, 18)
+	UiBuilder.round(halo, HALO_DIAMETER // 2)
+
+	handle:GetPropertyChangedSignal("Position"):Connect(function()
+		halo.Position = handle.Position
+	end)
 
 	local icicles = {}
 	for icicleIndex = 1, #ICICLE_HEIGHTS do
@@ -95,7 +103,7 @@ local function createSliderEffects(sliderHolder: Frame): SliderEffects?
 			Name = "Icicle" .. icicleIndex,
 			AnchorPoint = Vector2.new(0, 0),
 			Position = UDim2.new(0, 2 + (icicleIndex - 1) * 7, 1, -3),
-			Size = UDim2.new(0, 5, 0, 0),
+			Size = UDim2.new(0, ICICLE_WIDTH, 0, 0),
 			BackgroundColor3 = FROST_HANDLE,
 			BorderSizePixel = 0,
 			Parent = handle,
@@ -139,7 +147,7 @@ local function meltLater(effects: SliderEffects)
 
 		for _, icicle in ipairs(effects.icicles) do
 			TweenService:Create(icicle, ICICLE_INFO, {
-				Size = UDim2.new(0, 5, 0, 0),
+				Size = UDim2.new(0, ICICLE_WIDTH, 0, 0),
 			}):Play()
 		end
 	end)
@@ -199,9 +207,15 @@ local function spawnSnowflake(effects: SliderEffects)
 	end)
 end
 
+-- Charge and frost each repaint the FULL handle state -- including the
+-- other effect's leftovers -- because a direction reversal mid-drag
+-- keeps cancelling the pending melt, so nothing else would clear them.
 local function playCharge(effects: SliderEffects, withParticles: boolean)
 	TweenService:Create(effects.fill, RECOLOR_INFO, {
 		BackgroundColor3 = GLOW_FILL,
+	}):Play()
+	TweenService:Create(effects.handle, RECOLOR_INFO, {
+		BackgroundColor3 = HANDLE_NEUTRAL,
 	}):Play()
 	TweenService:Create(effects.handleStroke, RECOLOR_INFO, {
 		Color = GLOW_EDGE,
@@ -210,6 +224,12 @@ local function playCharge(effects: SliderEffects, withParticles: boolean)
 	TweenService:Create(effects.halo, RECOLOR_INFO, {
 		BackgroundTransparency = 0.55,
 	}):Play()
+
+	for _, icicle in ipairs(effects.icicles) do
+		TweenService:Create(icicle, ICICLE_INFO, {
+			Size = UDim2.new(0, ICICLE_WIDTH, 0, 0),
+		}):Play()
+	end
 
 	if withParticles then
 		spawnSparks(effects)
@@ -228,6 +248,9 @@ local function playFrost(effects: SliderEffects, withParticles: boolean)
 	TweenService:Create(effects.handleStroke, RECOLOR_INFO, {
 		Color = FROST_EDGE,
 		Thickness = 3,
+	}):Play()
+	TweenService:Create(effects.halo, RECOLOR_INFO, {
+		BackgroundTransparency = 1,
 	}):Play()
 
 	for icicleIndex, icicle in ipairs(effects.icicles) do

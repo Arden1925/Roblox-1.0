@@ -170,8 +170,13 @@ local function rebuild(container: Frame)
 
 	cursorY += STREAK_TITLE_HEIGHT + QUEST_ROW_SPACING
 
+	-- The strip wraps every seven days; day 8 lights one box again. A
+	-- streak of zero must light nothing, and (0 - 1) % 7 is 6 in Luau,
+	-- so the zero case cannot share the modulo expression.
+	local reachedCount = if streakCount > 0 then (streakCount - 1) % 7 + 1 else 0
+
 	for dayIndex = 1, 7 do
-		local reached = dayIndex <= (streakCount - 1) % 7 + (if streakCount > 0 then 1 else 0)
+		local reached = dayIndex <= reachedCount
 		local dayBox = UiBuilder.create("Frame", {
 			Name = "Day" .. dayIndex,
 			Position = UDim2.new(0, SIDE_MARGIN + (dayIndex - 1) * 52, 0, cursorY),
@@ -182,7 +187,7 @@ local function rebuild(container: Frame)
 		})
 		UiBuilder.round(dayBox, 8)
 
-		UiBuilder.create("TextLabel", {
+		local dayLabel = UiBuilder.create("TextLabel", {
 			Size = UDim2.new(1, 0, 1, 0),
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBold,
@@ -191,8 +196,12 @@ local function rebuild(container: Frame)
 				then Color3.fromRGB(26, 38, 32)
 				else Color3.fromRGB(255, 255, 255),
 			TextSize = 12,
-			Parent = dayBox,
 		})
+
+		-- Dark-on-gold is the reached look; opt out of the cartoonify
+		-- recolor, which fires when the label is parented.
+		dayLabel:SetAttribute("KeepTextColor", true)
+		dayLabel.Parent = dayBox
 	end
 
 	cursorY += STREAK_BOX_HEIGHT + SECTION_SPACING
@@ -333,11 +342,18 @@ function QuestGui.start()
 		end
 	end
 
-	localPlayer:GetAttributeChangedSignal("QuestsJson"):Connect(function()
+	-- Claiming the streak changes StreakCount/StreakClaimable but sends
+	-- QuestsJson back byte-identical, which fires no changed signal -- so
+	-- the streak attributes must trigger a rebuild themselves.
+	local function rebuildIfVisible()
 		if window.Visible then
 			rebuild(window)
 		end
-	end)
+	end
+
+	for _, attributeName in ipairs({ "QuestsJson", "StreakCount", "StreakClaimable" }) do
+		localPlayer:GetAttributeChangedSignal(attributeName):Connect(rebuildIfVisible)
+	end
 
 	-- Group chest prompts: claim through the server and toast the reply.
 	local function watchChest(chest: Instance)
