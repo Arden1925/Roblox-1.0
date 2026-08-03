@@ -58,6 +58,121 @@ local function timedEffectLines(): { string }
 	return lines
 end
 
+--[[
+	The rename prompt: one box over the whole backpack, prefilled with
+	the pet's current name. The server filters the requested name, and
+	the PetNamesJson attribute change repaints the open page on success.
+]]
+local function openRenamePrompt(page: ScrollingFrame, petIndex: number, currentName: string)
+	local window = page.Parent
+	if window == nil then
+		return
+	end
+
+	local existing = window:FindFirstChild("RenamePrompt")
+	if existing ~= nil then
+		existing:Destroy()
+	end
+
+	local prompt = UiBuilder.create("Frame", {
+		Name = "RenamePrompt",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(0, 320, 0, 150),
+		BackgroundColor3 = CARD_COLOR,
+		BorderSizePixel = 0,
+		ZIndex = 10,
+		Parent = window,
+	}) :: Frame
+	UiBuilder.round(prompt, 14)
+	UiBuilder.stroke(prompt, ACCENT_COLOR, 2)
+
+	UiBuilder.create("TextLabel", {
+		Position = UDim2.new(0, 0, 0, 10),
+		Size = UDim2.new(1, 0, 0, 24),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		Text = "NAME YOUR PET",
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextSize = 18,
+		ZIndex = 11,
+		Parent = prompt,
+	})
+
+	local nameBox = UiBuilder.create("TextBox", {
+		Name = "NameBox",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 44),
+		Size = UDim2.new(1, -40, 0, 36),
+		BackgroundColor3 = Color3.fromRGB(28, 34, 44),
+		BorderSizePixel = 0,
+		Font = Enum.Font.Gotham,
+		PlaceholderText = "Type a name...",
+		Text = currentName,
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextSize = 15,
+		ZIndex = 11,
+		Parent = prompt,
+	}) :: TextBox
+	UiBuilder.round(nameBox, 8)
+
+	local cancelButton = UiBuilder.create("TextButton", {
+		Name = "CancelButton",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, -75, 1, -46),
+		Size = UDim2.new(0, 140, 0, 34),
+		BackgroundColor3 = Color3.fromRGB(99, 110, 114),
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamBold,
+		Text = "CANCEL",
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextSize = 15,
+		ZIndex = 11,
+		Parent = prompt,
+	}) :: TextButton
+	UiBuilder.round(cancelButton, 8)
+	UiBuilder.hoverPop(cancelButton)
+
+	local saveButton = UiBuilder.create("TextButton", {
+		Name = "SaveButton",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 75, 1, -46),
+		Size = UDim2.new(0, 140, 0, 34),
+		BackgroundColor3 = EQUIPPED_COLOR,
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamBold,
+		Text = "SAVE",
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextSize = 15,
+		ZIndex = 11,
+		Parent = prompt,
+	}) :: TextButton
+	UiBuilder.round(saveButton, 8)
+	UiBuilder.hoverPop(saveButton)
+
+	cancelButton.Activated:Connect(function()
+		prompt:Destroy()
+	end)
+
+	saveButton.Activated:Connect(function()
+		local requestedName = nameBox.Text
+		task.spawn(function()
+			local renamePet = Remotes.get("RenamePet") :: RemoteFunction
+
+			-- InvokeServer throws if the server errors mid-call.
+			local invoked, success, message = pcall(function()
+				return renamePet:InvokeServer(petIndex, requestedName)
+			end)
+
+			if invoked and success then
+				prompt:Destroy()
+			end
+
+			Toast.show(if invoked then message else "Something went wrong -- try again.")
+		end)
+	end)
+end
+
 local function fillPetsTab(page: ScrollingFrame)
 	local petsJson = localPlayer:GetAttribute("PetsJson")
 	local namesJson = localPlayer:GetAttribute("PetNamesJson")
@@ -138,6 +253,30 @@ local function fillPetsTab(page: ScrollingFrame)
 				PetViewport.celebrate(viewport)
 			end
 			UiBuilder.popOpen(card)
+		end)
+
+		-- Rename lives on the card too, so any pet can get a name at any
+		-- time, not just on the hatch screen.
+		local renameButton = UiBuilder.create("TextButton", {
+			Name = "RenameButton",
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -12, 0, 10),
+			Size = UDim2.new(0, 26, 0, 26),
+			BackgroundColor3 = ACCENT_COLOR,
+			BorderSizePixel = 0,
+			Font = Enum.Font.GothamBold,
+			Text = "\u{270F}",
+			TextColor3 = Color3.fromRGB(255, 255, 255),
+			TextSize = 14,
+			ZIndex = 3,
+			Parent = card,
+		}) :: TextButton
+		UiBuilder.round(renameButton, 13)
+		UiBuilder.hoverPop(renameButton)
+
+		renameButton.Activated:Connect(function()
+			local promptName: string = if nickname ~= nil then nickname else info.baseName
+			openRenamePrompt(page, order, promptName)
 		end)
 
 		-- Nickname (or species) on top; a nicknamed pet shows its
@@ -422,6 +561,13 @@ function BackpackGui.start()
 	local tabButtons: { [string]: TextButton } = {}
 
 	local function refreshPage()
+		-- A repaint invalidates the pet indexes a prompt was aimed at, so
+		-- any open rename prompt closes with the page it belonged to.
+		local stalePrompt = window:FindFirstChild("RenamePrompt")
+		if stalePrompt ~= nil then
+			stalePrompt:Destroy()
+		end
+
 		for _, child in ipairs(page:GetChildren()) do
 			if child:IsA("Frame") or child:IsA("TextLabel") then
 				child:Destroy()

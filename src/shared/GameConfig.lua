@@ -80,12 +80,28 @@ local GameConfig = {
 	-- combined chance stays under 10% so mutations feel special.
 	mutations = {
 		{
+			key = "celestial",
+			name = "Celestial",
+			chance = 0.0003,
+			bonusMultiplier = 6,
+			scale = 1.5,
+			color = { 255, 246, 210 },
+		},
+		{
 			key = "cosmic",
 			name = "Cosmic",
 			chance = 0.0006,
 			bonusMultiplier = 5,
 			scale = 1.45,
 			color = { 170, 120, 255 },
+		},
+		{
+			key = "void",
+			name = "Void",
+			chance = 0.001,
+			bonusMultiplier = 4.5,
+			scale = 1.4,
+			color = { 25, 18, 40 },
 		},
 		{
 			key = "rainbow",
@@ -104,12 +120,28 @@ local GameConfig = {
 			color = { 60, 50, 80 },
 		},
 		{
+			key = "magma",
+			name = "Magma",
+			chance = 0.0045,
+			bonusMultiplier = 2.8,
+			scale = 1.25,
+			color = { 255, 94, 36 },
+		},
+		{
 			key = "electric",
 			name = "Electric",
 			chance = 0.006,
 			bonusMultiplier = 2.6,
 			scale = 1.2,
 			color = { 255, 240, 90 },
+		},
+		{
+			key = "toxic",
+			name = "Toxic",
+			chance = 0.009,
+			bonusMultiplier = 2.4,
+			scale = 1.18,
+			color = { 124, 252, 88 },
 		},
 		{
 			key = "frozen",
@@ -122,7 +154,7 @@ local GameConfig = {
 		{
 			key = "golden",
 			name = "Golden",
-			chance = 0.025,
+			chance = 0.02,
 			bonusMultiplier = 1.8,
 			scale = 1.1,
 			color = { 255, 203, 80 },
@@ -130,7 +162,7 @@ local GameConfig = {
 		{
 			key = "shiny",
 			name = "Shiny",
-			chance = 0.05,
+			chance = 0.04,
 			bonusMultiplier = 1.5,
 			scale = 1.05,
 			color = { 255, 255, 255 },

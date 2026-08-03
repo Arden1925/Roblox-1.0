@@ -34,16 +34,33 @@ local TIER_RANKS = {
 }
 
 -- Per-mutation particle tuning; color comes from the mutation spec.
--- Shadow smolders slowly, electric crackles fast, cosmic adds a second
--- starfield emitter on top of its glow.
+-- Shadow and void smolder slowly with no glow, electric crackles fast,
+-- magma sputters embers, and the two space tiers (cosmic, celestial)
+-- add a second starfield emitter on top of their glow.
 local MUTATION_PARTICLES: { [string]: { rate: number, speed: number, size: number } } = {
 	shiny = { rate = 4, speed = 1, size = 0.25 },
 	golden = { rate = 8, speed = 1.5, size = 0.3 },
 	frozen = { rate = 8, speed = 0.6, size = 0.35 },
+	toxic = { rate = 10, speed = 1, size = 0.35 },
 	electric = { rate = 16, speed = 4, size = 0.2 },
+	magma = { rate = 14, speed = 1.8, size = 0.3 },
 	shadow = { rate = 10, speed = 0.5, size = 0.6 },
 	rainbow = { rate = 14, speed = 2, size = 0.3 },
+	void = { rate = 12, speed = 0.4, size = 0.55 },
 	cosmic = { rate = 18, speed = 2.5, size = 0.35 },
+	celestial = { rate = 20, speed = 2.2, size = 0.4 },
+}
+
+-- Mutations whose particles are darkness rather than light.
+local UNLIT_MUTATIONS: { [string]: boolean } = {
+	shadow = true,
+	void = true,
+}
+
+-- Mutations that earn the extra starfield emitter.
+local STARFIELD_MUTATIONS: { [string]: boolean } = {
+	cosmic = true,
+	celestial = true,
 }
 
 local PetModels = {}
@@ -166,7 +183,7 @@ local function applyMutationVisuals(model: Model, mutation: PetCatalog.PetMutati
 	emitter.Lifetime = NumberRange.new(0.6, 1.4)
 	emitter.Size = NumberSequence.new(tuning.size)
 	emitter.Transparency = NumberSequence.new(0.2, 1)
-	emitter.LightEmission = if mutation.key == "shadow" then 0 else 0.8
+	emitter.LightEmission = if UNLIT_MUTATIONS[mutation.key] == true then 0 else 0.8
 	emitter.SpreadAngle = Vector2.new(180, 180)
 	emitter.Parent = shell
 
@@ -181,9 +198,9 @@ local function applyMutationVisuals(model: Model, mutation: PetCatalog.PetMutati
 		emitter.Color = ColorSequence.new(mutation.color)
 	end
 
-	-- Cosmic pets float in their own tiny galaxy: a second, dimmer
+	-- Space pets float in their own tiny galaxy: a second, dimmer
 	-- emitter of slow white stars behind the colored one.
-	if mutation.key == "cosmic" then
+	if STARFIELD_MUTATIONS[mutation.key] == true then
 		local stars = emitter:Clone()
 		stars.Rate = 8
 		stars.Speed = NumberRange.new(0.3, 0.8)
