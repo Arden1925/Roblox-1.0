@@ -25,6 +25,20 @@ local ACCENT_COLOR = Color3.fromRGB(255, 202, 58)
 local READY_COLOR = Color3.fromRGB(76, 209, 55)
 local LOCKED_COLOR = Color3.fromRGB(72, 84, 96)
 
+-- The window is laid out as a running cursor -- quests, then the
+-- streak strip, then the claim button -- and sized to fit, so sections
+-- can never overlap no matter how many quests the server sends.
+local WINDOW_WIDTH = 400
+local CONTENT_TOP = 60
+local SIDE_MARGIN = 16
+local QUEST_ROW_HEIGHT = 56
+local QUEST_ROW_SPACING = 6
+local SECTION_SPACING = 14
+local STREAK_TITLE_HEIGHT = 20
+local STREAK_BOX_HEIGHT = 40
+local STREAK_BUTTON_HEIGHT = 42
+local BOTTOM_MARGIN = 14
+
 local localPlayer = Players.LocalPlayer
 
 local QuestGui = {}
@@ -59,11 +73,13 @@ local function rebuild(container: Frame)
 	local questsJson = localPlayer:GetAttribute("QuestsJson")
 	local quests = if typeof(questsJson) == "string" then HttpService:JSONDecode(questsJson) else {}
 
+	local cursorY = CONTENT_TOP
+
 	for questIndex, quest in ipairs(quests) do
 		local row = UiBuilder.create("Frame", {
 			Name = quest.key,
-			Position = UDim2.new(0, 16, 0, 8 + questIndex * 62),
-			Size = UDim2.new(1, -32, 0, 56),
+			Position = UDim2.new(0, SIDE_MARGIN, 0, cursorY),
+			Size = UDim2.new(1, -SIDE_MARGIN * 2, 0, QUEST_ROW_HEIGHT),
 			BackgroundColor3 = ROW_COLOR,
 			BorderSizePixel = 0,
 			Parent = container,
@@ -126,7 +142,11 @@ local function rebuild(container: Frame)
 		claimButton.Activated:Connect(function()
 			invokeAndToast("ClaimQuest", questIndex)
 		end)
+
+		cursorY += QUEST_ROW_HEIGHT + QUEST_ROW_SPACING
 	end
+
+	cursorY += SECTION_SPACING - QUEST_ROW_SPACING
 
 	-- The streak strip: seven day boxes, tomorrow always visible.
 	local streakCount = localPlayer:GetAttribute("StreakCount")
@@ -137,8 +157,8 @@ local function rebuild(container: Frame)
 
 	UiBuilder.create("TextLabel", {
 		Name = "StreakTitle",
-		Position = UDim2.new(0, 16, 0, 208),
-		Size = UDim2.new(1, -32, 0, 20),
+		Position = UDim2.new(0, SIDE_MARGIN, 0, cursorY),
+		Size = UDim2.new(1, -SIDE_MARGIN * 2, 0, STREAK_TITLE_HEIGHT),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBlack,
 		Text = string.format("LOGIN STREAK -- DAY %d", streakCount),
@@ -148,12 +168,14 @@ local function rebuild(container: Frame)
 		Parent = container,
 	})
 
+	cursorY += STREAK_TITLE_HEIGHT + QUEST_ROW_SPACING
+
 	for dayIndex = 1, 7 do
 		local reached = dayIndex <= (streakCount - 1) % 7 + (if streakCount > 0 then 1 else 0)
 		local dayBox = UiBuilder.create("Frame", {
 			Name = "Day" .. dayIndex,
-			Position = UDim2.new(0, 16 + (dayIndex - 1) * 52, 0, 232),
-			Size = UDim2.new(0, 46, 0, 40),
+			Position = UDim2.new(0, SIDE_MARGIN + (dayIndex - 1) * 52, 0, cursorY),
+			Size = UDim2.new(0, 46, 0, STREAK_BOX_HEIGHT),
 			BackgroundColor3 = if reached then ACCENT_COLOR else ROW_COLOR,
 			BorderSizePixel = 0,
 			Parent = container,
@@ -173,11 +195,13 @@ local function rebuild(container: Frame)
 		})
 	end
 
+	cursorY += STREAK_BOX_HEIGHT + SECTION_SPACING
+
 	local streakButton = UiBuilder.create("TextButton", {
 		Name = "StreakButton",
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -12),
-		Size = UDim2.new(1, -32, 0, 42),
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, cursorY),
+		Size = UDim2.new(1, -SIDE_MARGIN * 2, 0, STREAK_BUTTON_HEIGHT),
 		BackgroundColor3 = if claimable then READY_COLOR else LOCKED_COLOR,
 		BorderSizePixel = 0,
 		Font = Enum.Font.GothamBlack,
@@ -192,6 +216,9 @@ local function rebuild(container: Frame)
 	streakButton.Activated:Connect(function()
 		invokeAndToast("ClaimStreak", nil)
 	end)
+
+	cursorY += STREAK_BUTTON_HEIGHT + BOTTOM_MARGIN
+	container.Size = UDim2.new(0, WINDOW_WIDTH, 0, cursorY)
 end
 
 -- The welcome-back popup for offline growth, shown once per session.
@@ -252,7 +279,7 @@ function QuestGui.start()
 		Name = "QuestWindow",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
-		Size = UDim2.new(0, 400, 0, 350),
+		Size = UDim2.new(0, WINDOW_WIDTH, 0, 350),
 		BackgroundColor3 = PANEL_COLOR,
 		BorderSizePixel = 0,
 		Visible = false,

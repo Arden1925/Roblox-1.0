@@ -22,6 +22,14 @@ local CARTOON_FONT = Enum.Font.FredokaOne
 local OUTLINE_NAVY = Color3.fromRGB(31, 41, 74)
 local INTERIOR_COLOR = Color3.fromRGB(244, 250, 255)
 local CLOSE_RED = Color3.fromRGB(235, 69, 44)
+local TEXT_WHITE = Color3.fromRGB(255, 255, 255)
+
+-- Sticker text needs a light fill to read against the navy outline.
+-- Roblox's default text color is black, and a few screens picked their
+-- own dark grays; every intentional accent (gold, greens, tier colors)
+-- sits above 0.4 luminance, every broken fill below 0.2, so this floor
+-- separates them with room to spare.
+local DARK_TEXT_LUMINANCE_FLOOR = 0.3
 
 local UiBuilder = {}
 
@@ -184,9 +192,16 @@ end
 ]]
 local function cartoonizeElement(element: Instance)
 	if element:IsA("TextLabel") or element:IsA("TextButton") or element:IsA("TextBox") then
-		-- The checker cannot pick one type from the union; Font exists on
-		-- all three, so a TextLabel cast is safe here.
-		(element :: TextLabel).Font = CARTOON_FONT
+		-- The checker cannot pick one type from the union; Font and
+		-- TextColor3 exist on all three, so a TextLabel cast is safe here.
+		local textElement = element :: TextLabel
+		textElement.Font = CARTOON_FONT
+
+		local fill = textElement.TextColor3
+		local luminance = 0.299 * fill.R + 0.587 * fill.G + 0.114 * fill.B
+		if luminance < DARK_TEXT_LUMINANCE_FLOOR then
+			textElement.TextColor3 = TEXT_WHITE
+		end
 
 		if element:FindFirstChild("TextOutline") == nil then
 			UiBuilder.create("UIStroke", {
