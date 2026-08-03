@@ -77,6 +77,27 @@ egg** (3 exclusive stronger pets), and a **limited Ultra Dragon** sits
 on a pedestal at spawn. Inventory lives in the **Backpack** (bottom-left
 button): Pets, Boosts, and a placeholder tab.
 
+## Engagement systems
+
+- **Offline growth**: size per minute away (config `offline`), capped,
+  with a welcome-back popup. **AFK pods** at spawn grow you hands-free.
+- **Events**: Golden Pads (random pad per world, x5, gold while lit) and
+  Falling Stars (beacon beam; first touch wins size + coins).
+- **Shiny hatches**: any hatch has a 5% shiny chance (x1.5 bonus).
+  Server Luck (Robux) and rebirth luck skew the top-tier odds.
+- **Daily quests + streak**: three rolled per day (`questTemplates`),
+  seven-day streak calendar, all claims server-validated. The **group
+  chest** at spawn pays members once `group.groupId` is set.
+- **Mechanisms** (tags): `WeightPlate`/`MechBridge` (combined Current
+  Size holds a bridge extended), `CrushBoulder` (CrushSize shatters it),
+  `Updraft` (MaxLiftSize lifts small bodies), `Crusher` (sine-cycle bar,
+  gentler cycles in early worlds), `AfkPod`, `GroupChest`.
+- **Rebirth**: a page with the requirement bar and a NOW/AFTER perk
+  table (+growth, +coins, +egg luck per rebirth), then a machine
+  cinematic that drains the player before the reset applies.
+- **Value packs**: escalating Starter/Pro/Mega products (Mega grants a
+  permanent growth bonus) plus the server-wide luck boost.
+
 ## Sliders
 
 A right-edge panel: **speed** (free, deliberately narrow 12-20 range --
