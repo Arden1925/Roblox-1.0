@@ -239,6 +239,7 @@ function SizeSpeedControls.start()
 
 	localPlayer:GetAttributeChangedSignal("OwnsSizeMaster"):Connect(buildSizeControl)
 	buildSizeControl()
+	UiBuilder.cartoonify(panel)
 end
 
 return SizeSpeedControls

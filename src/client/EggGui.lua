@@ -211,30 +211,27 @@ local function buildWindow(parent: Instance): Frame
 		window.Visible = false
 	end)
 
+	UiBuilder.cartoonizeWindow(window, COIN_COLOR, "EGGS")
+
 	return window :: Frame
 end
 
 local function openForWorld(window: Frame, worldIndex: number)
 	for _, child in ipairs(window:GetChildren()) do
-		if child.Name ~= "CloseButton" and (child:IsA("Frame") or child:IsA("TextLabel")) then
+		local clearable = child:IsA("Frame") or child:IsA("TextLabel")
+		if clearable and child.Name ~= "CloseButton" and child.Name ~= "HeaderBanner" then
 			child:Destroy()
 		end
 	end
 
 	local world = GameConfig.worlds[worldIndex]
 
-	UiBuilder.create("TextLabel", {
-		Name = "Title",
-		Position = UDim2.new(0, 16, 0, 10),
-		Size = UDim2.new(1, -70, 0, 32),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBlack,
-		Text = string.upper(world.eggName),
-		TextColor3 = COIN_COLOR,
-		TextSize = 24,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = window,
-	})
+	-- The corner tab renames itself to the current world's egg.
+	local banner = window:FindFirstChild("HeaderBanner")
+	local bannerTitle = if banner ~= nil then banner:FindFirstChild("Title") else nil
+	if bannerTitle ~= nil and bannerTitle:IsA("TextLabel") then
+		bannerTitle.Text = string.upper(world.eggName)
+	end
 
 	local list = UiBuilder.create("Frame", {
 		Name = "PetList",

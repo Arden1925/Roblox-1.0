@@ -34,24 +34,18 @@ local localPlayer = Players.LocalPlayer
 
 local ShopGui = {}
 
-local function createSideButton(parent: Instance, order: number, text: string): TextButton
-	local button = UiBuilder.create("TextButton", {
-		Name = text .. "Button",
-		LayoutOrder = order,
-		Size = UDim2.new(0, 110, 0, 40),
-		BackgroundColor3 = PANEL_COLOR,
-		BackgroundTransparency = 0.2,
-		BorderSizePixel = 0,
-		Font = Enum.Font.GothamBold,
-		Text = text,
-		TextColor3 = Color3.fromRGB(255, 255, 255),
-		TextSize = 18,
-		Parent = parent,
-	}) :: TextButton
-	UiBuilder.round(button, 10)
-	UiBuilder.hoverPop(button)
+-- The circular icon buttons with captions that every simulator uses.
+local SIDE_BUTTON_STYLES = {
+	Shop = { icon = "\u{1F6D2}", color = Color3.fromRGB(235, 69, 44) },
+	Rebirth = { icon = "\u{2728}", color = Color3.fromRGB(155, 89, 217) },
+	Quests = { icon = "\u{1F4DC}", color = Color3.fromRGB(255, 177, 66) },
+	Shrink = { icon = "\u{1F53D}", color = Color3.fromRGB(52, 172, 224) },
+}
 
-	return button
+local function createSideButton(parent: Instance, order: number, text: string): TextButton
+	local style = SIDE_BUTTON_STYLES[text]
+
+	return UiBuilder.iconButton(parent, order, style.icon, text, style.color)
 end
 
 -- A row frame the vertical list stacks; cards go inside side by side.
@@ -152,6 +146,7 @@ local function createCard(
 	}) :: TextButton
 	UiBuilder.round(actionButton, 8)
 	UiBuilder.hoverPop(actionButton)
+	UiBuilder.gloss(card)
 
 	return actionButton
 end
@@ -418,6 +413,8 @@ local function buildShopWindow(parent: Instance): Frame
 		GameConfig.serverLuck
 	)
 
+	UiBuilder.cartoonizeWindow(window, Color3.fromRGB(235, 69, 44))
+
 	return window
 end
 
@@ -457,15 +454,10 @@ function ShopGui.start()
 		end
 	end)
 
-	-- Rebirth opens its own page now; the shine marks it special.
 	local rebirthButton = createSideButton(buttonColumn, 2, "Rebirth")
-	rebirthButton.BackgroundColor3 = Color3.fromRGB(120, 60, 180)
-	UiBuilder.shimmer(rebirthButton)
 	rebirthButton.Activated:Connect(RebirthGui.open)
 
 	local questsButton = createSideButton(buttonColumn, 3, "Quests")
-	questsButton.BackgroundColor3 = Color3.fromRGB(130, 110, 20)
-	UiBuilder.shimmer(questsButton)
 	questsButton.Activated:Connect(function()
 		QuestGui.toggle()
 	end)

@@ -56,6 +56,8 @@ local function getLabel(): TextLabel
 		Parent = toastLabel,
 	})
 
+	UiBuilder.cartoonify(screenGui)
+
 	-- Returning the local (not the module-level optional) keeps the
 	-- return type a guaranteed TextLabel for the type checker.
 	local built = toastLabel :: TextLabel

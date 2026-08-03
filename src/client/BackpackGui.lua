@@ -440,23 +440,19 @@ function BackpackGui.start()
 		window.Visible = false
 	end)
 
-	-- The backpack button: bottom-left, always breathing so new players
-	-- notice it.
-	local backpackButton = UiBuilder.create("TextButton", {
-		Name = "BackpackButton",
+	-- The backpack button: bottom-left circular icon, always breathing so
+	-- new players notice it.
+	local buttonHolder = UiBuilder.create("Frame", {
+		Name = "BackpackButtonHolder",
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 12, 1, -12),
-		Size = UDim2.new(0, 110, 0, 46),
-		BackgroundColor3 = ACCENT_COLOR,
-		BorderSizePixel = 0,
-		Font = Enum.Font.GothamBlack,
-		Text = "BACKPACK",
-		TextColor3 = Color3.fromRGB(255, 255, 255),
-		TextSize = 16,
+		Position = UDim2.new(0, 12, 1, -8),
+		Size = UDim2.new(0, 64, 0, 80),
+		BackgroundTransparency = 1,
 		Parent = screenGui,
 	})
-	UiBuilder.round(backpackButton, 12)
-	UiBuilder.hoverPop(backpackButton)
+
+	local backpackButton =
+		UiBuilder.iconButton(buttonHolder, 1, "\u{1F392}", "Backpack", ACCENT_COLOR)
 
 	local buttonStroke = UiBuilder.stroke(backpackButton, Color3.fromRGB(255, 255, 255), 1)
 	UiBuilder.pulse(buttonStroke)
@@ -482,6 +478,9 @@ function BackpackGui.start()
 			refreshPage()
 		end
 	end)
+
+	UiBuilder.cartoonizeWindow(window, Color3.fromRGB(255, 121, 198))
+	UiBuilder.cartoonify(buttonHolder)
 end
 
 return BackpackGui

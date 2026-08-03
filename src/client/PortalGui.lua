@@ -203,6 +203,8 @@ local function buildWindow(parent: Instance): Frame
 		Parent = rowList,
 	})
 
+	UiBuilder.cartoonizeWindow(window, Color3.fromRGB(97, 200, 66))
+
 	return window :: Frame
 end
 

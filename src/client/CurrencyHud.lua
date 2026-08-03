@@ -91,6 +91,7 @@ function CurrencyHud.start()
 
 	local coinsLabel = createCounter(column, 1, "$", COIN_COLOR)
 	local speedLabel = createCounter(column, 2, ">>", SPEED_COLOR)
+	UiBuilder.cartoonify(screenGui)
 
 	local lastCoins = 0
 	local function refreshCoins()

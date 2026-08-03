@@ -126,6 +126,7 @@ local function buildWindow(parent: Instance)
 	end)
 
 	showStep()
+	UiBuilder.cartoonify(window)
 	UiBuilder.popOpen(window)
 end
 

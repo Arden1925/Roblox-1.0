@@ -215,6 +215,11 @@ function SizeHud.start()
 	refresh()
 	refreshRebirths()
 	refreshWorld()
+
+	local screenGui = gui.sizeLabel:FindFirstAncestorOfClass("ScreenGui")
+	if screenGui ~= nil then
+		UiBuilder.cartoonify(screenGui)
+	end
 end
 
 return SizeHud

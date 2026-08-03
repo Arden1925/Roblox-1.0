@@ -42,10 +42,16 @@ local function invokeAndToast(remoteName: string, argument: any)
 	end)
 end
 
+local PROTECTED_NAMES = {
+	Title = true,
+	CloseButton = true,
+	HeaderBanner = true,
+}
+
 local function rebuild(container: Frame)
 	for _, child in ipairs(container:GetChildren()) do
 		local rebuildable = child:IsA("Frame") or child:IsA("TextLabel") or child:IsA("TextButton")
-		if rebuildable and child.Name ~= "Title" and child.Name ~= "CloseButton" then
+		if rebuildable and not PROTECTED_NAMES[child.Name] then
 			child:Destroy()
 		end
 	end
@@ -288,6 +294,8 @@ function QuestGui.start()
 	closeButton.Activated:Connect(function()
 		window.Visible = false
 	end)
+
+	UiBuilder.cartoonizeWindow(window, Color3.fromRGB(255, 177, 66))
 
 	QuestGui.toggle = function()
 		if window.Visible then

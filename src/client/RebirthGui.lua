@@ -55,10 +55,16 @@ local function perkRows(rebirths: number): { { string } }
 	}
 end
 
+local PROTECTED_NAMES = {
+	Title = true,
+	CloseButton = true,
+	HeaderBanner = true,
+}
+
 local function rebuild(container: Frame)
 	for _, child in ipairs(container:GetChildren()) do
 		local rebuildable = child:IsA("Frame") or child:IsA("TextLabel") or child:IsA("TextButton")
-		if rebuildable and child.Name ~= "Title" and child.Name ~= "CloseButton" then
+		if rebuildable and not PROTECTED_NAMES[child.Name] then
 			child:Destroy()
 		end
 	end
@@ -270,6 +276,7 @@ function RebirthGui.start()
 	end)
 
 	window = builtWindow
+	UiBuilder.cartoonizeWindow(builtWindow, Color3.fromRGB(155, 89, 217))
 
 	-- Live refresh while the page is open, so the bar fills in front of
 	-- the player as they grow.

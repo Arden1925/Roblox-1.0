@@ -120,23 +120,18 @@ end
 
 local function openStation(window: Frame, worldIndex: number)
 	for _, child in ipairs(window:GetChildren()) do
-		if child.Name ~= "CloseButton" and (child:IsA("Frame") or child:IsA("TextLabel")) then
+		local clearable = child:IsA("Frame") or child:IsA("TextLabel")
+		if clearable and child.Name ~= "CloseButton" and child.Name ~= "HeaderBanner" then
 			child:Destroy()
 		end
 	end
 
-	UiBuilder.create("TextLabel", {
-		Name = "Title",
-		Position = UDim2.new(0, 16, 0, 10),
-		Size = UDim2.new(1, -70, 0, 30),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBlack,
-		Text = string.format("STATION -- %s", string.upper(GameConfig.worlds[worldIndex].name)),
-		TextColor3 = Color3.fromRGB(255, 255, 255),
-		TextSize = 20,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = window,
-	})
+	-- The corner tab renames itself to the current world's station.
+	local banner = window:FindFirstChild("HeaderBanner")
+	local bannerTitle = if banner ~= nil then banner:FindFirstChild("Title") else nil
+	if bannerTitle ~= nil and bannerTitle:IsA("TextLabel") then
+		bannerTitle.Text = string.upper(GameConfig.worlds[worldIndex].name)
+	end
 
 	local columns = {
 		{ name = "PotionColumn", header = "POTIONS", accent = POTION_COLOR, x = 0 },
@@ -262,6 +257,8 @@ function StationGui.start()
 	closeButton.Activated:Connect(function()
 		window.Visible = false
 	end)
+
+	UiBuilder.cartoonizeWindow(window, POTION_COLOR, "STATION")
 
 	local function watchStation(station: Instance)
 		local prompt = station:FindFirstChildOfClass("ProximityPrompt")
