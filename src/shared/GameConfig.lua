@@ -74,10 +74,67 @@ local GameConfig = {
 		starCoinsBase = 40,
 	},
 
-	shiny = {
-		-- Chance any hatch comes out Shiny: sparkling look, bigger bonus.
-		chance = 0.05,
-		bonusMultiplier = 1.5,
+	-- Mutations a hatch can roll, exactly one per pet, listed rarest
+	-- FIRST so the roll can walk the list cumulatively. Rarer mutations
+	-- pay bigger growth multipliers and grow the pet's body more, but the
+	-- combined chance stays under 10% so mutations feel special.
+	mutations = {
+		{
+			key = "cosmic",
+			name = "Cosmic",
+			chance = 0.0006,
+			bonusMultiplier = 5,
+			scale = 1.45,
+			color = { 170, 120, 255 },
+		},
+		{
+			key = "rainbow",
+			name = "Rainbow",
+			chance = 0.0015,
+			bonusMultiplier = 4,
+			scale = 1.35,
+			color = { 255, 120, 220 },
+		},
+		{
+			key = "shadow",
+			name = "Shadow",
+			chance = 0.003,
+			bonusMultiplier = 3.2,
+			scale = 1.3,
+			color = { 60, 50, 80 },
+		},
+		{
+			key = "electric",
+			name = "Electric",
+			chance = 0.006,
+			bonusMultiplier = 2.6,
+			scale = 1.2,
+			color = { 255, 240, 90 },
+		},
+		{
+			key = "frozen",
+			name = "Frozen",
+			chance = 0.012,
+			bonusMultiplier = 2.2,
+			scale = 1.15,
+			color = { 150, 220, 255 },
+		},
+		{
+			key = "golden",
+			name = "Golden",
+			chance = 0.025,
+			bonusMultiplier = 1.8,
+			scale = 1.1,
+			color = { 255, 203, 80 },
+		},
+		{
+			key = "shiny",
+			name = "Shiny",
+			chance = 0.05,
+			bonusMultiplier = 1.5,
+			scale = 1.05,
+			color = { 255, 255, 255 },
+		},
 	},
 
 	mechanisms = {
@@ -386,7 +443,7 @@ local GameConfig = {
 
 	-- The limited pet shown on a pedestal at spawn, Robux only.
 	limitedPet = {
-		name = "Ultra Dragon",
+		name = "Ancient Kraken",
 		description = "LIMITED -- x2.5 total growth aura.",
 		robuxPrice = 799,
 		productId = 0,
@@ -407,20 +464,20 @@ local GameConfig = {
 			eggName = "Meadow Egg",
 			eggCost = 100,
 			eggPets = {
-				"Sprout Bunny",
-				"Daisy Chick",
-				"Thorn Fox",
-				"Bloom Deer",
-				"Sunflower Bear",
+				"Goldfish",
+				"Clownfish",
+				"Crab",
+				"Seahorse",
+				"Axolotl",
 			},
 			robuxEgg = {
 				name = "Meadow Royal Egg",
 				robuxPrice = 149,
 				productId = 0,
 				pets = {
-					{ name = "Royal Bunny", tier = 3, bonus = 0.3 },
-					{ name = "Gilded Fox", tier = 3, bonus = 0.32 },
-					{ name = "Crystal Bear", tier = 4, bonus = 0.5 },
+					{ name = "Fruit Turtle", tier = 3, bonus = 0.3 },
+					{ name = "Flower Whale", tier = 3, bonus = 0.32 },
+					{ name = "Candy Turtle", tier = 4, bonus = 0.5 },
 				},
 			},
 			cityProduct = {
@@ -441,15 +498,15 @@ local GameConfig = {
 			gateRequiredSize = 80,
 			eggName = "Vent Egg",
 			eggCost = 280,
-			eggPets = { "Pipe Rat", "Gear Pup", "Steam Cat", "Bolt Owl", "Chrome Drake" },
+			eggPets = { "Catfish", "Flounder", "Lobster", "Electric Eel", "Steampunk Turtle" },
 			robuxEgg = {
 				name = "Vent Royal Egg",
 				robuxPrice = 199,
 				productId = 0,
 				pets = {
-					{ name = "Neon Rat", tier = 4, bonus = 0.5 },
-					{ name = "Piston Hound", tier = 4, bonus = 0.55 },
-					{ name = "Turbine Drake", tier = 5, bonus = 0.8 },
+					{ name = "Cyber Shark", tier = 4, bonus = 0.5 },
+					{ name = "Steve The Stingray", tier = 4, bonus = 0.55 },
+					{ name = "Crystal Shark", tier = 5, bonus = 0.8 },
 				},
 			},
 			cityProduct = {
@@ -472,20 +529,20 @@ local GameConfig = {
 			eggName = "Ember Egg",
 			eggCost = 520,
 			eggPets = {
-				"Ash Imp",
-				"Coal Golem",
-				"Flame Lynx",
-				"Magma Tortoise",
-				"Inferno Phoenix",
+				"Tigerfish",
+				"Pufferfish",
+				"Meteor Crab",
+				"Skeletal Shark",
+				"Infernal Axolotl",
 			},
 			robuxEgg = {
 				name = "Ember Royal Egg",
 				robuxPrice = 249,
 				productId = 0,
 				pets = {
-					{ name = "Obsidian Imp", tier = 5, bonus = 0.8 },
-					{ name = "Cinder Wolf", tier = 5, bonus = 0.85 },
-					{ name = "Solar Phoenix", tier = 6, bonus = 1.1 },
+					{ name = "Meteor Lobster", tier = 5, bonus = 0.8 },
+					{ name = "Mutated Shark", tier = 5, bonus = 0.85 },
+					{ name = "Void Turtle", tier = 6, bonus = 1.1 },
 				},
 			},
 			cityProduct = {
@@ -506,20 +563,20 @@ local GameConfig = {
 			eggName = "Cloud Egg",
 			eggCost = 800,
 			eggPets = {
-				"Nimbus Lamb",
-				"Breeze Sprite",
-				"Storm Eagle",
-				"Aurora Whale",
-				"Sky Serpent",
+				"Narwhal",
+				"Beluga Whale",
+				"Alien Jellyfish",
+				"Nebula Whale",
+				"Galaxy Axolotl",
 			},
 			robuxEgg = {
 				name = "Cloud Royal Egg",
 				robuxPrice = 299,
 				productId = 0,
 				pets = {
-					{ name = "Halo Lamb", tier = 6, bonus = 1.1 },
-					{ name = "Tempest Eagle", tier = 6, bonus = 1.15 },
-					{ name = "Galaxy Serpent", tier = 6, bonus = 1.25 },
+					{ name = "Celestial Axolotl", tier = 6, bonus = 1.1 },
+					{ name = "Lunar Penguin", tier = 6, bonus = 1.15 },
+					{ name = "Ancient Whale", tier = 6, bonus = 1.25 },
 				},
 			},
 			cityProduct = {

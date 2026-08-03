@@ -18,6 +18,7 @@ local REMOTE_CLASS_BY_NAME = {
 	EquipPet = "RemoteFunction",
 	HatchEgg = "RemoteFunction",
 	MarkTutorialDone = "RemoteEvent",
+	RenamePet = "RemoteFunction",
 	RequestInstantShrink = "RemoteEvent",
 	RequestTeleport = "RemoteFunction",
 	SetDesiredSize = "RemoteEvent",

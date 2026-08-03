@@ -20,6 +20,7 @@ local ObstacleService = require(Server.ObstacleService)
 local PetService = require(Server.PetService)
 local QuestService = require(Server.QuestService)
 local RebirthService = require(Server.RebirthService)
+local SceneryService = require(Server.SceneryService)
 local ShopService = require(Server.ShopService)
 local SizeService = require(Server.SizeService)
 local WorldService = require(Server.WorldService)
@@ -37,7 +38,7 @@ local function snapshotPlayer(player: Player): DataService.PlayerData?
 	local sizeSnapshot = SizeService.snapshot(player)
 	local reachedWorld = WorldService.reachedWorld(player)
 	local coins, upgrades = EconomyService.snapshot(player)
-	local pets, equippedPet = PetService.snapshot(player)
+	local pets, equippedPet, petNames = PetService.snapshot(player)
 	local checkpointsClaimed, respawnWorld, respawnIndex = CheckpointService.snapshot(player)
 	local questDate, quests, streakCount, streakLastDate, groupChestClaimed =
 		QuestService.snapshot(player)
@@ -55,6 +56,7 @@ local function snapshotPlayer(player: Player): DataService.PlayerData?
 		coins = coins,
 		tutorialDone = player:GetAttribute("TutorialDone") == true,
 		pets = pets,
+		petNames = petNames or {},
 		equippedPet = equippedPet or "",
 		upgrades = upgrades or {},
 		checkpointsClaimed = checkpointsClaimed or {},
@@ -102,7 +104,7 @@ local function onPlayerAdded(player: Player)
 	SizeService.initializePlayer(player, data)
 	WorldService.initializePlayer(player, data.reachedWorld)
 	EconomyService.initializePlayer(player, data.coins, data.upgrades)
-	PetService.initializePlayer(player, data.pets, data.equippedPet)
+	PetService.initializePlayer(player, data.pets, data.petNames, data.equippedPet)
 	CheckpointService.initializePlayer(
 		player,
 		data.checkpointsClaimed,
@@ -149,11 +151,13 @@ Players.PlayerRemoving:Connect(function(player)
 	end
 end)
 
-local remoteHandlers: { [string]: (Player, ...any) -> (boolean, string) } = {
+-- HatchEgg returns a result table; everything else returns a message.
+local remoteHandlers: { [string]: (Player, ...any) -> (boolean, any) } = {
 	AttemptRebirth = RebirthService.attemptRebirth,
 	RequestTeleport = WorldService.attemptTeleport,
 	HatchEgg = PetService.hatchEgg,
 	EquipPet = PetService.equipPet,
+	RenamePet = PetService.renamePet,
 	BuyPotion = EconomyService.buyPotion,
 	BuyUpgrade = EconomyService.buyUpgrade,
 	UseMysteryMachine = EconomyService.useMysteryMachine,
@@ -206,3 +210,4 @@ CheckpointService.start()
 EventService.start()
 MechanismService.start()
 MapGenerator.generate()
+SceneryService.start()
