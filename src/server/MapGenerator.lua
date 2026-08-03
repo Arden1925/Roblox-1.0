@@ -480,6 +480,346 @@ local function createBorders(parent: Instance)
 	end
 end
 
+-- Three glass regrowth pods on the spawn plaza: stand inside and grow
+-- hands-free at a fraction of pad rate. The zone part is the pod floor.
+local function createAfkPods(parent: Instance, minZ: number)
+	for podIndex = 1, 3 do
+		local center = Vector3.new(14 + podIndex * 8, WorldLayout.baseY, minZ + 34)
+
+		local floor = createPart({
+			Name = "AfkPod",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.6, 6, 6),
+			CFrame = CFrame.new(center + Vector3.new(0, 0.3, 0))
+				* CFrame.Angles(0, 0, math.rad(90)),
+			Color = Color3.fromRGB(0, 206, 201),
+			Material = Enum.Material.Neon,
+			Parent = parent,
+		})
+		CollectionService:AddTag(floor, "AfkPod")
+
+		createPart({
+			Name = "PodGlass",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(9, 5.5, 5.5),
+			CFrame = CFrame.new(center + Vector3.new(0, 5, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+			Color = Color3.fromRGB(198, 240, 255),
+			Material = Enum.Material.Glass,
+			Transparency = 0.65,
+			CanCollide = false,
+			Parent = parent,
+		})
+
+		createPart({
+			Name = "PodCap",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.new(5.5, 2.4, 5.5),
+			Position = center + Vector3.new(0, 9.6, 0),
+			Color = Color3.fromRGB(99, 110, 114),
+			Material = Enum.Material.Metal,
+			CanCollide = false,
+			Parent = parent,
+		})
+	end
+
+	local sign = createPart({
+		Name = "PodSign",
+		Size = Vector3.new(8, 0.4, 4),
+		Position = Vector3.new(30, WorldLayout.baseY + 0.2, minZ + 27),
+		Color = Color3.fromRGB(0, 206, 201),
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = parent,
+	})
+	addBillboard(sign, "AFK GROW PODS", Color3.fromRGB(0, 206, 201), 4)
+end
+
+-- The group reward chest: a proper treasure chest with a lid, gold
+-- banding, and a lock plate, claimable once by group members.
+local function createGroupChest(parent: Instance, minZ: number)
+	local center = Vector3.new(-8, WorldLayout.baseY, minZ + 10)
+
+	local body = createPart({
+		Name = "GroupChest",
+		Size = Vector3.new(5, 3, 3.4),
+		Position = center + Vector3.new(0, 1.5, 0),
+		Color = Color3.fromRGB(110, 80, 48),
+		Material = Enum.Material.Wood,
+		Parent = parent,
+	})
+
+	createPart({
+		Name = "ChestLid",
+		Size = Vector3.new(5.2, 1.4, 3.6),
+		CFrame = CFrame.new(center + Vector3.new(0, 3.4, -0.4))
+			* CFrame.Angles(math.rad(-18), 0, 0),
+		Color = Color3.fromRGB(96, 68, 38),
+		Material = Enum.Material.Wood,
+		Parent = parent,
+	})
+
+	for _, bandX in ipairs({ -1.6, 1.6 }) do
+		createPart({
+			Name = "ChestBand",
+			Size = Vector3.new(0.5, 3.2, 3.6),
+			Position = center + Vector3.new(bandX, 1.5, 0),
+			Color = Color3.fromRGB(253, 203, 110),
+			Material = Enum.Material.Metal,
+			CanCollide = false,
+			Parent = parent,
+		})
+	end
+
+	createPart({
+		Name = "ChestLock",
+		Size = Vector3.new(1, 1.2, 0.4),
+		Position = center + Vector3.new(0, 1.8, 1.8),
+		Color = Color3.fromRGB(253, 203, 110),
+		Material = Enum.Material.Metal,
+		CanCollide = false,
+		Parent = parent,
+	})
+
+	addPrompt(body, "Claim Group Reward", "Group Chest")
+	addBillboard(body, "GROUP REWARD -- JOIN & LIKE!", Color3.fromRGB(253, 203, 110), 6)
+	addOutline(body, Color3.fromRGB(253, 203, 110))
+	CollectionService:AddTag(body, "GroupChest")
+end
+
+-- A crusher bar over the main lane: rises and slams on a slow sine
+-- cycle. Caught players lose Current Size only.
+local function createCrusher(parent: Instance, worldIndex: number, minZ: number)
+	local cycleSeconds = GameConfig.mechanisms.crusherCycleSeconds[worldIndex]
+	if cycleSeconds == nil or cycleSeconds <= 0 then
+		return
+	end
+
+	local crusher = createPart({
+		Name = "Crusher",
+		Size = Vector3.new(24, 2.5, 5),
+		Position = Vector3.new(0, WorldLayout.baseY + 9, minZ + 70),
+		Color = Color3.fromRGB(120, 90, 200),
+		Material = Enum.Material.DiamondPlate,
+		Parent = parent,
+	})
+
+	crusher:SetAttribute("CycleSeconds", cycleSeconds)
+	crusher:SetAttribute("DropHeight", 7.5)
+
+	for _, sideX in ipairs({ -13, 13 }) do
+		createPart({
+			Name = "CrusherPost",
+			Size = Vector3.new(2, 12, 2),
+			Position = Vector3.new(sideX, WorldLayout.baseY + 6, minZ + 70),
+			Color = Color3.fromRGB(87, 96, 111),
+			Material = Enum.Material.Metal,
+			Parent = parent,
+		})
+	end
+
+	CollectionService:AddTag(crusher, "Crusher")
+end
+
+--[[
+	A cracked boulder sealing a side alcove: only characters at or above
+	its CrushSize smash through. Built as a main rock with satellite
+	rocks and dark crack seams so it reads as breakable at a glance.
+]]
+local function createBoulder(parent: Instance, position: Vector3, crushSize: number, accent: Color3)
+	local boulder = createPart({
+		Name = "CrushBoulder",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.new(8, 8, 8),
+		Position = position + Vector3.new(0, WorldLayout.baseY + 3.5, 0),
+		Color = Color3.fromRGB(120, 110, 100),
+		Material = Enum.Material.Rock,
+		Parent = parent,
+	})
+
+	boulder:SetAttribute("CrushSize", crushSize)
+	CollectionService:AddTag(boulder, "CrushBoulder")
+
+	for _, offset in ipairs({ Vector3.new(-4, -1, 2), Vector3.new(4.2, -1.5, -1) }) do
+		createPart({
+			Name = "BoulderChunk",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.new(3.4, 3.4, 3.4),
+			Position = position + offset + Vector3.new(0, WorldLayout.baseY + 2, 0),
+			Color = Color3.fromRGB(107, 98, 89),
+			Material = Enum.Material.Rock,
+			CanCollide = false,
+			Parent = parent,
+		})
+	end
+
+	for crackIndex = 1, 3 do
+		createPart({
+			Name = "BoulderCrack",
+			Size = Vector3.new(0.25, 4.5, 0.25),
+			CFrame = CFrame.new(position + Vector3.new(0, WorldLayout.baseY + 3.5, 0))
+				* CFrame.Angles(0, crackIndex * 2, math.rad(20 * crackIndex))
+				* CFrame.new(0, 0, -3.9),
+			Color = Color3.fromRGB(35, 32, 30),
+			Material = Enum.Material.Slate,
+			CanCollide = false,
+			Parent = parent,
+		})
+	end
+
+	addBillboard(boulder, string.format("SMASH -- Size %d", crushSize), accent, 7)
+end
+
+--[[
+	An updraft: a fan grate with a glowing ring whose air column lifts
+	small bodies up to a coin ledge. Big characters walk over it like it
+	is not there -- shrinking is the ticket up.
+]]
+local function createUpdraft(
+	parent: Instance,
+	worldIndex: number,
+	position: Vector3,
+	maxLiftSize: number,
+	ledgeHeight: number
+)
+	local grate = createPart({
+		Name = "Updraft",
+		Size = Vector3.new(7, 0.6, 7),
+		Position = position + Vector3.new(0, WorldLayout.baseY + 0.3, 0),
+		Color = Color3.fromRGB(87, 96, 111),
+		Material = Enum.Material.DiamondPlate,
+		Parent = parent,
+	})
+
+	grate:SetAttribute("MaxLiftSize", maxLiftSize)
+	CollectionService:AddTag(grate, "Updraft")
+
+	local ring = createPart({
+		Name = "UpdraftRing",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.4, 8, 8),
+		CFrame = CFrame.new(position + Vector3.new(0, WorldLayout.baseY + 0.7, 0))
+			* CFrame.Angles(0, 0, math.rad(90)),
+		Color = Color3.fromRGB(129, 236, 236),
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = parent,
+	})
+	CollectionService:AddTag(ring, "Spinner")
+
+	addBillboard(grate, string.format("UPDRAFT -- Size %d or less", maxLiftSize), ring.Color, 5)
+
+	-- The payoff ledge, floating beside the column.
+	createPart({
+		Name = "UpdraftLedge",
+		Size = Vector3.new(10, 1, 10),
+		Position = position + Vector3.new(9, WorldLayout.baseY + ledgeHeight, 0),
+		Color = Color3.fromRGB(223, 228, 234),
+		Material = Enum.Material.SmoothPlastic,
+		Parent = parent,
+	})
+
+	for coinIndex = 1, 3 do
+		createCoin(
+			parent,
+			position + Vector3.new(6 + coinIndex * 2, ledgeHeight + 1.5, 0),
+			worldIndex
+		)
+	end
+end
+
+--[[
+	The weight-plate bridge: a plank bridge with side rails that slides
+	across a gap between two elevated platforms while enough combined
+	Current Size stands on the pressure plate. Grow to hold it open,
+	then cross -- or bring a friend.
+]]
+local function createPlateBridge(parent: Instance, worldIndex: number, minZ: number)
+	local baseX = 38
+	local platformY = WorldLayout.baseY + 8
+
+	for _, spec in ipairs({ { minZ + 148, "NearPlatform" }, { minZ + 176, "FarPlatform" } }) do
+		createPart({
+			Name = spec[2],
+			Size = Vector3.new(14, 1.2, 14),
+			Position = Vector3.new(baseX, platformY, spec[1]),
+			Color = Color3.fromRGB(99, 110, 114),
+			Material = Enum.Material.Metal,
+			Parent = parent,
+		})
+	end
+
+	-- Steps up to the near platform.
+	for stepIndex = 1, 2 do
+		createPart({
+			Name = "PlatformStep",
+			Size = Vector3.new(8, 1.2, 5),
+			Position = Vector3.new(
+				baseX,
+				WorldLayout.baseY + stepIndex * 2.6,
+				minZ + 138 - stepIndex * 5
+			),
+			Color = Color3.fromRGB(223, 228, 234),
+			Material = Enum.Material.SmoothPlastic,
+			Parent = parent,
+		})
+	end
+
+	-- The plate: base slab plus a fat red button that reads "stand here".
+	local plate = createPart({
+		Name = "WeightPlate",
+		Size = Vector3.new(6, 0.6, 6),
+		Position = Vector3.new(baseX - 3, platformY + 0.9, minZ + 148),
+		Color = Color3.fromRGB(180, 90, 70),
+		Material = Enum.Material.Neon,
+		Parent = parent,
+	})
+
+	plate:SetAttribute("RequiredSize", 60)
+	plate:SetAttribute("BridgeName", "VentBridge")
+	addBillboard(plate, "HOLD 60+ SIZE TO EXTEND", Color3.fromRGB(255, 159, 67), 5)
+	CollectionService:AddTag(plate, "WeightPlate")
+
+	-- The bridge: main plank, cross planks, and side rails, parked
+	-- inside the near platform until the plate is held.
+	local bridge = createPart({
+		Name = "VentBridge",
+		Size = Vector3.new(6, 0.8, 16),
+		Position = Vector3.new(baseX + 3, platformY, minZ + 154),
+		Color = Color3.fromRGB(150, 110, 66),
+		Material = Enum.Material.WoodPlanks,
+		Parent = parent,
+	})
+
+	bridge:SetAttribute("ExtendZ", 14)
+	CollectionService:AddTag(bridge, "MechBridge")
+
+	for railOffset = -2.6, 2.6, 5.2 do
+		local rail = createPart({
+			Name = "BridgeRail",
+			Size = Vector3.new(0.5, 1.6, 16),
+			Position = Vector3.new(baseX + 3 + railOffset, platformY + 1.2, minZ + 154),
+			Color = Color3.fromRGB(110, 80, 48),
+			Material = Enum.Material.Wood,
+			CanCollide = false,
+			Parent = parent,
+		})
+
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = bridge
+		weld.Part1 = rail
+		weld.Parent = rail
+		rail.Anchored = false
+	end
+
+	for coinIndex = 1, 3 do
+		createCoin(
+			parent,
+			Vector3.new(baseX - 4 + coinIndex * 3, platformY + 2, minZ + 176),
+			worldIndex
+		)
+	end
+end
+
 --[[
 	Per-world scenery so each world has its own vibe the moment you walk
 	in: a meadow with trees and flowers, an industrial pipe yard, a
@@ -524,6 +864,12 @@ local function createWorldDecor(parent: Instance, worldIndex: number, minZ: numb
 				Parent = parent,
 			})
 		end
+
+		-- First boulder: gentle requirement, coins waiting behind it.
+		createBoulder(parent, Vector3.new(-34, 0, minZ + 118), 25, Color3.fromRGB(120, 224, 76))
+		for coinIndex = 1, 3 do
+			createCoin(parent, Vector3.new(-40 + coinIndex * 2, 2, minZ + 126), worldIndex)
+		end
 	elseif worldIndex == 2 then
 		for _, spot in ipairs({ { -34, 55 }, { 34, 130 }, { -30, 175 } }) do
 			for sideOffset = -4, 4, 8 do
@@ -552,6 +898,9 @@ local function createWorldDecor(parent: Instance, worldIndex: number, minZ: numb
 				Parent = parent,
 			})
 		end
+
+		createUpdraft(parent, worldIndex, Vector3.new(-24, 0, minZ + 155), 25, 15)
+		createPlateBridge(parent, worldIndex, minZ)
 	elseif worldIndex == 3 then
 		for _, spot in ipairs({ { -36, 45 }, { 36, 95 }, { -34, 185 } }) do
 			createPart({
@@ -678,6 +1027,12 @@ local function buildWorldFlavor(parent: Instance, worldIndex: number, minZ: numb
 			Parent = parent,
 		})
 		createPad(parent, "GrowPad", Vector3.new(6, 16.5, minZ + 178), GROW_PAD_COLOR)
+
+		-- The foundry vault: a serious boulder hiding a golden stash.
+		createBoulder(parent, Vector3.new(36, 0, minZ + 66), 120, Color3.fromRGB(255, 118, 33))
+		for coinIndex = 1, 4 do
+			createCoin(parent, Vector3.new(30 + coinIndex * 3, 2, minZ + 58), worldIndex)
+		end
 	elseif worldIndex == 4 then
 		local bounce = createPart({
 			Name = "BouncePad",
@@ -716,6 +1071,8 @@ local function buildWorldFlavor(parent: Instance, worldIndex: number, minZ: numb
 		for _, padX in ipairs({ 2, 18 }) do
 			createPad(parent, "GrowPad", Vector3.new(padX, 28.5, minZ + 185), GROW_PAD_COLOR)
 		end
+
+		createUpdraft(parent, worldIndex, Vector3.new(-28, 0, minZ + 60), 25, 20)
 	end
 end
 
@@ -739,8 +1096,13 @@ local function buildWorld(parent: Instance, worldIndex: number)
 	createEggStand(parent, worldIndex, minZ)
 	createStation(parent, worldIndex, minZ)
 	createWorldDecor(parent, worldIndex, minZ)
+	createCrusher(parent, worldIndex, minZ)
 	if worldIndex % GameConfig.economy.mysteryMachineEveryNWorlds == 0 then
 		createMysteryMachine(parent, worldIndex, minZ)
+	end
+	if worldIndex == 1 then
+		createAfkPods(parent, minZ)
+		createGroupChest(parent, minZ)
 	end
 
 	-- Section A -- grow: pads, a few coins, then a gate that demands

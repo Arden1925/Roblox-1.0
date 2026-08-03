@@ -8,9 +8,11 @@
 
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 local Server = script.Parent
 local EconomyService = require(Server.EconomyService)
+local QuestService = require(Server.QuestService)
 
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
@@ -149,7 +151,22 @@ function PetService.hatchEgg(player: Player): (boolean, string)
 		return false, string.format("The %s costs %d coins.", world.eggName, world.eggCost)
 	end
 
+	-- Luck skews the top slot's weight: rebirth luck is personal, the
+	-- Server Luck Boost (a workspace attribute) lifts everyone at once.
+	local luckMultiplier = 1
+	local rebirths = player:GetAttribute("Rebirths")
+	if typeof(rebirths) == "number" then
+		luckMultiplier += rebirths * GameConfig.rebirth.luckPerRebirth
+	end
+
+	local serverLuckUntil = Workspace:GetAttribute("ServerLuckUntil")
+	if typeof(serverLuckUntil) == "number" and serverLuckUntil > Workspace:GetServerTimeNow() then
+		luckMultiplier *= GameConfig.serverLuck.weightMultiplier
+	end
+
 	local pool = PetCatalog.coinEggPool(worldIndex)
+	pool[#pool].weight *= luckMultiplier
+
 	local totalWeight = 0
 	for _, entry in ipairs(pool) do
 		totalWeight += entry.weight
@@ -165,8 +182,14 @@ function PetService.hatchEgg(player: Player): (boolean, string)
 		end
 	end
 
+	-- The shiny roll layers on top of whatever rarity was hatched.
+	if math.random() < GameConfig.shiny.chance then
+		hatchedId = PetCatalog.shinyId(hatchedId)
+	end
+
 	EconomyService.spendForEgg(player, world.eggCost)
 	PetService.grantPet(player, hatchedId)
+	QuestService.increment(player, "eggsHatched")
 
 	return true, hatchedId
 end

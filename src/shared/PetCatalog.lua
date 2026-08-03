@@ -75,7 +75,46 @@ register({
 	worldIndex = nil,
 })
 
+local SHINY_SUFFIX = "*shiny"
+
+function PetCatalog.shinyId(petId: string): string
+	return petId .. SHINY_SUFFIX
+end
+
+function PetCatalog.isShiny(petId: string): boolean
+	return string.sub(petId, -#SHINY_SUFFIX) == SHINY_SUFFIX
+end
+
+function PetCatalog.baseId(petId: string): string
+	if PetCatalog.isShiny(petId) then
+		return string.sub(petId, 1, -#SHINY_SUFFIX - 1)
+	end
+
+	return petId
+end
+
+--[[
+	Shiny variants are derived, not registered: any pet id with the shiny
+	suffix resolves to its base pet with a boosted bonus and a shiny
+	name, so the catalog never has to list them.
+]]
 function PetCatalog.infoFor(petId: string): PetInfo?
+	if PetCatalog.isShiny(petId) then
+		local baseInfo = infoById[string.sub(petId, 1, -#SHINY_SUFFIX - 1)]
+		if baseInfo == nil then
+			return nil
+		end
+
+		return {
+			id = petId,
+			name = "Shiny " .. baseInfo.name,
+			tierName = baseInfo.tierName,
+			tierColor = baseInfo.tierColor:Lerp(Color3.fromRGB(255, 255, 255), 0.3),
+			bonus = baseInfo.bonus * GameConfig.shiny.bonusMultiplier,
+			worldIndex = baseInfo.worldIndex,
+		}
+	end
+
 	return infoById[petId]
 end
 

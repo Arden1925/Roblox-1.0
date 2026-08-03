@@ -12,6 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Server = script.Parent
+local QuestService = require(Server.QuestService)
 local SizeService = require(Server.SizeService)
 
 local Shared = ReplicatedStorage.Shared
@@ -84,6 +85,12 @@ function EconomyService.awardCoins(player: Player, baseAmount: number)
 	local bonusPerLevel = if upgrade ~= nil then upgrade.bonusPerLevel else 0
 	local magnet = 1 + EconomyService.upgradeLevel(player, "CoinUpgrade") * bonusPerLevel
 
+	-- Rebirths pay forever too -- one of the perks on the rebirth page.
+	local rebirths = player:GetAttribute("Rebirths")
+	if typeof(rebirths) == "number" then
+		magnet += rebirths * GameConfig.rebirth.coinBonusPerRebirth
+	end
+
 	local potionUntil = player:GetAttribute("CoinPotionUntil")
 	local doubled = typeof(potionUntil) == "number" and potionUntil > Workspace:GetServerTimeNow()
 	local potionMultiplier = if doubled then 2 else 1
@@ -141,6 +148,8 @@ function EconomyService.buyPotion(player: Player, potionKey: any): (boolean, str
 		local expiresAt = Workspace:GetServerTimeNow() + potion.durationSeconds
 		player:SetAttribute(potion.effectKey .. "Until", expiresAt)
 	end
+
+	QuestService.increment(player, "potionsUsed")
 
 	return true, string.format("%s used!", potion.name)
 end
@@ -219,6 +228,7 @@ local function watchCoin(coin: BasePart)
 		coin.Transparency = 1
 		coin.CanTouch = false
 		EconomyService.awardCoins(player, GameConfig.economy.coinPickupBase * worldIndex)
+		QuestService.increment(player, "coinPickups")
 
 		task.delay(GameConfig.economy.coinRespawnSeconds, function()
 			coin.Transparency = 0

@@ -24,6 +24,8 @@ local VIP_TRAIL_COLOR = Color3.fromRGB(253, 203, 110)
 local grantMaxSize: (Player, number) -> () = function() end
 local grantRobuxEggPet: (Player, number) -> () = function() end
 local grantLimitedPet: (Player) -> () = function() end
+local awardCoins: (Player, number) -> () = function() end
+local addPermanentGrowth: (Player, number) -> () = function() end
 
 local ShopService = {}
 
@@ -37,8 +39,8 @@ local function passKeyForId(gamePassId: number): string?
 	return nil
 end
 
--- Developer products come in three kinds; the receipt handler needs to
--- know which family an ID belongs to.
+-- Developer products come in several kinds; the receipt handler needs
+-- to know which family an ID belongs to.
 local function productForId(productId: number): ({ [string]: any }?, string?, number?)
 	for worldIndex, world in ipairs(GameConfig.worlds) do
 		if world.cityProduct.productId == productId then
@@ -47,6 +49,16 @@ local function productForId(productId: number): ({ [string]: any }?, string?, nu
 		if world.robuxEgg.productId == productId then
 			return world.robuxEgg, "egg", worldIndex
 		end
+	end
+
+	for _, pack in ipairs(GameConfig.packs) do
+		if pack.productId == productId then
+			return pack, "pack", nil
+		end
+	end
+
+	if GameConfig.serverLuck.productId == productId then
+		return GameConfig.serverLuck, "serverLuck", nil
 	end
 
 	if GameConfig.limitedPet.productId == productId then
@@ -161,6 +173,27 @@ local function processReceipt(receiptInfo: { [string]: any }): Enum.ProductPurch
 		grantRobuxEggPet(player, worldIndex :: number)
 	elseif kind == "limited" then
 		grantLimitedPet(player)
+	elseif kind == "pack" then
+		if product.grantSize ~= nil then
+			grantMaxSize(player, product.grantSize)
+		end
+		if product.grantCoins ~= nil then
+			awardCoins(player, product.grantCoins)
+		end
+		if product.grantEffectKey ~= nil then
+			local expiresAt = Workspace:GetServerTimeNow() + product.grantEffectSeconds
+			player:SetAttribute(product.grantEffectKey .. "Until", expiresAt)
+		end
+		if product.grantPermanentGrowth ~= nil then
+			addPermanentGrowth(player, product.grantPermanentGrowth)
+		end
+	elseif kind == "serverLuck" then
+		-- A workspace attribute reaches every script and every client at
+		-- once -- the whole server shares the boost.
+		Workspace:SetAttribute(
+			"ServerLuckUntil",
+			Workspace:GetServerTimeNow() + product.durationSeconds
+		)
 	end
 
 	return Enum.ProductPurchaseDecision.PurchaseGranted
@@ -170,10 +203,14 @@ function ShopService.start(dependencies: {
 	grantMaxSize: (Player, number) -> (),
 	grantRobuxEggPet: (Player, number) -> (),
 	grantLimitedPet: (Player) -> (),
+	awardCoins: (Player, number) -> (),
+	addPermanentGrowth: (Player, number) -> (),
 })
 	grantMaxSize = dependencies.grantMaxSize
 	grantRobuxEggPet = dependencies.grantRobuxEggPet
 	grantLimitedPet = dependencies.grantLimitedPet
+	awardCoins = dependencies.awardCoins
+	addPermanentGrowth = dependencies.addPermanentGrowth
 
 	MarketplaceService.ProcessReceipt = processReceipt
 

@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Server = script.Parent
 local EconomyService = require(Server.EconomyService)
+local QuestService = require(Server.QuestService)
 
 local Shared = ReplicatedStorage.Shared
 local WorldLayout = require(Shared.WorldLayout)
@@ -71,6 +72,7 @@ local function onCheckpointTouched(checkpoint: BasePart, hit: BasePart)
 	if checkpointIndex > claimed then
 		record.claimed[worldKey] = checkpointIndex
 		EconomyService.awardCheckpoint(player, worldIndex)
+		QuestService.increment(player, "checkpoints")
 	end
 end
 

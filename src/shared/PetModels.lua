@@ -76,7 +76,8 @@ function PetModels.build(petId: string): Model?
 		return nil
 	end
 
-	local hash = hashString(petId)
+	-- Hash the base id so a shiny pet keeps its base pet's silhouette.
+	local hash = hashString(PetCatalog.baseId(petId))
 	local rank = PetModels.tierRank(info.tierName)
 
 	local model = Instance.new("Model")
@@ -153,6 +154,26 @@ function PetModels.build(petId: string): Model?
 			Material = Enum.Material.Neon,
 			Parent = model,
 		})
+	end
+
+	-- Shiny pets glitter regardless of tier: glass body finish and a
+	-- crown of tiny sparkle studs.
+	if PetCatalog.isShiny(petId) then
+		body.Material = Enum.Material.Glass
+		head.Material = Enum.Material.Glass
+
+		for sparkleIndex = 1, 4 do
+			local angle = sparkleIndex * math.pi / 2
+			createPart({
+				Name = "Sparkle",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.new(0.16, 0.16, 0.16),
+				CFrame = CFrame.new(math.cos(angle) * 1.1, 1.5, math.sin(angle) * 1.1),
+				Color = Color3.fromRGB(255, 255, 255),
+				Material = Enum.Material.Neon,
+				Parent = model,
+			})
+		end
 	end
 
 	-- The aura: a glowing translucent shell around the whole pet, the

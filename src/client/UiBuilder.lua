@@ -8,7 +8,10 @@
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
-local HOVER_INFO = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+-- Cartoon-style: hovers overshoot and settle with a springy wobble
+-- instead of a flat ease.
+local HOVER_IN_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
+local HOVER_OUT_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local OPEN_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local PULSE_INFO = TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
 
@@ -54,20 +57,25 @@ function UiBuilder.stroke(instance: Instance, color: Color3, thickness: number):
 	return stroke :: UIStroke
 end
 
--- Grows a button slightly under the cursor. UIScale means the button's
--- own Size (and any layout using it) is never disturbed.
+-- Cartoon hover: the button bounces up in size with a little tilt, then
+-- springs back. UIScale means the button's own Size (and any layout
+-- using it) is never disturbed.
 function UiBuilder.hoverPop(button: GuiButton)
 	local scale = UiBuilder.create("UIScale", {
 		Scale = 1,
 		Parent = button,
 	}) :: UIScale
 
+	local restRotation = button.Rotation
+
 	button.MouseEnter:Connect(function()
-		TweenService:Create(scale, HOVER_INFO, { Scale = 1.06 }):Play()
+		TweenService:Create(scale, HOVER_IN_INFO, { Scale = 1.12 }):Play()
+		TweenService:Create(button, HOVER_IN_INFO, { Rotation = restRotation - 3 }):Play()
 	end)
 
 	button.MouseLeave:Connect(function()
-		TweenService:Create(scale, HOVER_INFO, { Scale = 1 }):Play()
+		TweenService:Create(scale, HOVER_OUT_INFO, { Scale = 1 }):Play()
+		TweenService:Create(button, HOVER_OUT_INFO, { Rotation = restRotation }):Play()
 	end)
 end
 

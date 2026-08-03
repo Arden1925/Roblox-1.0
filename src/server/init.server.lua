@@ -12,17 +12,22 @@ local Server = script
 local CheckpointService = require(Server.CheckpointService)
 local DataService = require(Server.DataService)
 local EconomyService = require(Server.EconomyService)
+local EventService = require(Server.EventService)
 local GateService = require(Server.GateService)
 local MapGenerator = require(Server.MapGenerator)
+local MechanismService = require(Server.MechanismService)
 local ObstacleService = require(Server.ObstacleService)
 local PetService = require(Server.PetService)
+local QuestService = require(Server.QuestService)
 local RebirthService = require(Server.RebirthService)
 local ShopService = require(Server.ShopService)
 local SizeService = require(Server.SizeService)
 local WorldService = require(Server.WorldService)
 
 local Shared = ReplicatedStorage.Shared
+local GameConfig = require(Shared.GameConfig)
 local Remotes = require(Shared.Remotes)
+local SizeFormula = require(Shared.SizeFormula)
 
 Remotes.createAll()
 
@@ -34,10 +39,14 @@ local function snapshotPlayer(player: Player): DataService.PlayerData?
 	local coins, upgrades = EconomyService.snapshot(player)
 	local pets, equippedPet = PetService.snapshot(player)
 	local checkpointsClaimed, respawnWorld, respawnIndex = CheckpointService.snapshot(player)
+	local questDate, quests, streakCount, streakLastDate, groupChestClaimed =
+		QuestService.snapshot(player)
 
 	if sizeSnapshot == nil or reachedWorld == nil or coins == nil or pets == nil then
 		return nil
 	end
+
+	local permanentGrowthBonus = player:GetAttribute("PermanentGrowthBonus")
 
 	return {
 		maxSize = sizeSnapshot.maxSize,
@@ -51,7 +60,39 @@ local function snapshotPlayer(player: Player): DataService.PlayerData?
 		checkpointsClaimed = checkpointsClaimed or {},
 		respawnWorld = respawnWorld or 1,
 		respawnIndex = respawnIndex or 0,
+		lastSeenAt = os.time(),
+		permanentGrowthBonus = if typeof(permanentGrowthBonus) == "number"
+			then permanentGrowthBonus
+			else 0,
+		groupChestClaimed = groupChestClaimed == true,
+		streakCount = streakCount or 0,
+		streakLastDate = streakLastDate or "",
+		questDate = questDate or "",
+		quests = quests or {},
 	}
+end
+
+--[[
+	Away-time growth: a gentle drip per minute offline, scaled by rebirth
+	multiplier and capped. The OfflineGain attribute cues the client's
+	welcome-back popup.
+]]
+local function grantOfflineGrowth(player: Player, data: DataService.PlayerData)
+	if data.lastSeenAt <= 0 then
+		return
+	end
+
+	local awaySeconds = math.min(os.time() - data.lastSeenAt, GameConfig.offline.maxHours * 3600)
+	if awaySeconds < 60 then
+		return
+	end
+
+	local multiplier = SizeFormula.growthMultiplier(data.rebirths, {})
+	local gain = math.floor(awaySeconds / 60 * GameConfig.offline.sizePerMinute * multiplier)
+	if gain > 0 then
+		SizeService.grantMaxSize(player, gain)
+		player:SetAttribute("OfflineGain", gain)
+	end
 end
 
 local function onPlayerAdded(player: Player)
@@ -68,7 +109,16 @@ local function onPlayerAdded(player: Player)
 		data.respawnWorld,
 		data.respawnIndex
 	)
+	QuestService.initializePlayer(
+		player,
+		data.questDate,
+		data.quests,
+		data.streakCount,
+		data.streakLastDate,
+		data.groupChestClaimed
+	)
 	player:SetAttribute("TutorialDone", data.tutorialDone)
+	grantOfflineGrowth(player, data)
 end
 
 Players.PlayerAdded:Connect(function(player)
@@ -87,6 +137,7 @@ Players.PlayerRemoving:Connect(function(player)
 	EconomyService.removePlayer(player)
 	PetService.removePlayer(player)
 	CheckpointService.removePlayer(player)
+	QuestService.removePlayer(player)
 
 	if snapshot ~= nil then
 		task.spawn(function()
@@ -98,26 +149,23 @@ Players.PlayerRemoving:Connect(function(player)
 	end
 end)
 
-local attemptRebirth = Remotes.get("AttemptRebirth") :: RemoteFunction
-attemptRebirth.OnServerInvoke = RebirthService.attemptRebirth
+local remoteHandlers: { [string]: (Player, ...any) -> (boolean, string) } = {
+	AttemptRebirth = RebirthService.attemptRebirth,
+	RequestTeleport = WorldService.attemptTeleport,
+	HatchEgg = PetService.hatchEgg,
+	EquipPet = PetService.equipPet,
+	BuyPotion = EconomyService.buyPotion,
+	BuyUpgrade = EconomyService.buyUpgrade,
+	UseMysteryMachine = EconomyService.useMysteryMachine,
+	ClaimQuest = QuestService.claimQuest,
+	ClaimStreak = QuestService.claimStreak,
+	ClaimGroupChest = QuestService.claimGroupChest,
+}
 
-local requestTeleport = Remotes.get("RequestTeleport") :: RemoteFunction
-requestTeleport.OnServerInvoke = WorldService.attemptTeleport
-
-local hatchEgg = Remotes.get("HatchEgg") :: RemoteFunction
-hatchEgg.OnServerInvoke = PetService.hatchEgg
-
-local equipPet = Remotes.get("EquipPet") :: RemoteFunction
-equipPet.OnServerInvoke = PetService.equipPet
-
-local buyPotion = Remotes.get("BuyPotion") :: RemoteFunction
-buyPotion.OnServerInvoke = EconomyService.buyPotion
-
-local buyUpgrade = Remotes.get("BuyUpgrade") :: RemoteFunction
-buyUpgrade.OnServerInvoke = EconomyService.buyUpgrade
-
-local useMysteryMachine = Remotes.get("UseMysteryMachine") :: RemoteFunction
-useMysteryMachine.OnServerInvoke = EconomyService.useMysteryMachine
+for remoteName, handler in pairs(remoteHandlers) do
+	local remote = Remotes.get(remoteName) :: RemoteFunction
+	remote.OnServerInvoke = handler
+end
 
 local requestInstantShrink = Remotes.get("RequestInstantShrink") :: RemoteEvent
 requestInstantShrink.OnServerEvent:Connect(function(player)
@@ -143,6 +191,11 @@ ShopService.start({
 	grantMaxSize = SizeService.grantMaxSize,
 	grantRobuxEggPet = PetService.grantRobuxEggPet,
 	grantLimitedPet = PetService.grantLimitedPet,
+	awardCoins = EconomyService.awardCoins,
+	addPermanentGrowth = SizeService.addPermanentGrowth,
+})
+QuestService.start({
+	awardCoins = EconomyService.awardCoins,
 })
 SizeService.start()
 GateService.start()
@@ -150,4 +203,6 @@ WorldService.start()
 ObstacleService.start()
 EconomyService.start()
 CheckpointService.start()
+EventService.start()
+MechanismService.start()
 MapGenerator.generate()

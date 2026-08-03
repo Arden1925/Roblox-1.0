@@ -10,6 +10,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Server = script.Parent
+local QuestService = require(Server.QuestService)
 local ShopService = require(Server.ShopService)
 local SizeService = require(Server.SizeService)
 
@@ -105,6 +106,7 @@ local function onBouncePadTouched(hit: BasePart)
 		local velocity = rootPart.AssemblyLinearVelocity
 		rootPart.AssemblyLinearVelocity =
 			Vector3.new(velocity.X, GameConfig.obstacles.bounceVelocity, velocity.Z)
+		QuestService.increment(player, "launches")
 	end
 end
 

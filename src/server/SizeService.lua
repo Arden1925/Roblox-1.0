@@ -15,6 +15,7 @@ local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Server = script.Parent
 local ShopService = require(Server.ShopService)
@@ -25,6 +26,7 @@ local SizeFormula = require(Shared.SizeFormula)
 
 local GROW_PAD_TAG = "GrowPad"
 local SHRINK_PAD_TAG = "ShrinkPad"
+local AFK_POD_TAG = "AfkPod"
 
 -- How far above a pad a character still counts as standing on it.
 local PAD_DETECTION_HEIGHT = 8
@@ -92,6 +94,7 @@ local function totalGrowthMultiplier(player: Player, state: PlayerState): number
 	end
 
 	multiplier *= 1 + attributeNumber(player, "PetGrowthBonus")
+	multiplier *= 1 + attributeNumber(player, "PermanentGrowthBonus")
 
 	if ShopService.effectActive(player, "GrowthPotion") then
 		multiplier *= 1.5
@@ -192,7 +195,7 @@ end
 	Spatial queries each tick beat Touched events here: no missed
 	TouchEnded, no debounce bookkeeping, and pads never hold state.
 ]]
-local function findPlayersOnPads(tag: string): { [Player]: boolean }
+local function findPlayersOnPads(tag: string): { [Player]: BasePart }
 	local playersOnPads = {}
 
 	for _, pad in ipairs(CollectionService:GetTagged(tag)) do
@@ -205,7 +208,7 @@ local function findPlayersOnPads(tag: string): { [Player]: boolean }
 				if character ~= nil then
 					local player = Players:GetPlayerFromCharacter(character)
 					if player ~= nil then
-						playersOnPads[player] = true
+						playersOnPads[player] = pad
 					end
 				end
 			end
@@ -215,17 +218,38 @@ local function findPlayersOnPads(tag: string): { [Player]: boolean }
 	return playersOnPads
 end
 
+--[[
+	How much pad growth this player earns this tick: full on a grow pad
+	(times the Golden Pad event multiplier when lit), a fraction inside
+	an AFK pod, zero elsewhere.
+]]
+local function padMultiplierFor(player: Player, growPad: BasePart?, afkPod: BasePart?): number
+	if growPad ~= nil then
+		local goldenUntil = growPad:GetAttribute("GoldenUntil")
+		local golden = typeof(goldenUntil) == "number"
+			and goldenUntil > Workspace:GetServerTimeNow()
+
+		return if golden then GameConfig.events.goldenPadMultiplier else 1
+	end
+
+	if afkPod ~= nil then
+		return GameConfig.afkPod.growthFraction
+	end
+
+	return 0
+end
+
 local function stepPlayer(
 	player: Player,
 	state: PlayerState,
 	deltaSeconds: number,
-	onGrowPad: boolean,
+	padMultiplier: number,
 	onShrinkPad: boolean
 )
 	local growth = GameConfig.growth.sizePerTick * totalGrowthMultiplier(player, state)
 
-	if onGrowPad then
-		state.maxSize += growth
+	if padMultiplier > 0 then
+		state.maxSize += growth * padMultiplier
 	elseif ShopService.playerOwnsPass(player, "AutoGrow") then
 		state.maxSize += growth * GameConfig.passEffects.autoGrowFraction
 	end
@@ -250,7 +274,14 @@ end
 	Registers a player with their loaded save data. Called once per player
 	after DataService finishes loading them.
 ]]
-function SizeService.initializePlayer(player: Player, data: { maxSize: number, rebirths: number })
+function SizeService.initializePlayer(
+	player: Player,
+	data: {
+		maxSize: number,
+		rebirths: number,
+		permanentGrowthBonus: number?,
+	}
+)
 	local state: PlayerState = {
 		currentSize = data.maxSize,
 		maxSize = data.maxSize,
@@ -279,6 +310,7 @@ function SizeService.initializePlayer(player: Player, data: { maxSize: number, r
 	leaderstats.Parent = player
 	player:SetAttribute("Rebirths", data.rebirths)
 	player:SetAttribute("SpeedSetting", state.speedSetting)
+	player:SetAttribute("PermanentGrowthBonus", data.permanentGrowthBonus or 0)
 
 	-- Respawned characters come back at default scale; force a re-apply.
 	player.CharacterAdded:Connect(function()
@@ -343,6 +375,14 @@ function SizeService.forceShrink(player: Player)
 	publishState(player, state)
 end
 
+-- The Mega Pack's forever bonus. Published as an attribute (which the
+-- growth formula reads) and persisted through the snapshot.
+function SizeService.addPermanentGrowth(player: Player, amount: number)
+	local current = player:GetAttribute("PermanentGrowthBonus")
+	local base = if typeof(current) == "number" then current else 0
+	player:SetAttribute("PermanentGrowthBonus", base + amount)
+end
+
 -- City items like Meadow Surge: paid size is granted to the body
 -- immediately, not drip-fed through regrowth.
 function SizeService.grantMaxSize(player: Player, amount: number)
@@ -402,14 +442,15 @@ function SizeService.start()
 
 		local onGrowPads = findPlayersOnPads(GROW_PAD_TAG)
 		local onShrinkPads = findPlayersOnPads(SHRINK_PAD_TAG)
+		local inAfkPods = findPlayersOnPads(AFK_POD_TAG)
 
 		for player, state in pairs(stateByPlayer) do
 			stepPlayer(
 				player,
 				state,
 				tickSeconds,
-				onGrowPads[player] == true,
-				onShrinkPads[player] == true
+				padMultiplierFor(player, onGrowPads[player], inAfkPods[player]),
+				onShrinkPads[player] ~= nil
 			)
 		end
 	end)

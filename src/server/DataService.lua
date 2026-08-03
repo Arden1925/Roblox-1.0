@@ -27,6 +27,13 @@ export type PlayerData = {
 	checkpointsClaimed: { [string]: number },
 	respawnWorld: number,
 	respawnIndex: number,
+	lastSeenAt: number,
+	permanentGrowthBonus: number,
+	groupChestClaimed: boolean,
+	streakCount: number,
+	streakLastDate: string,
+	questDate: string,
+	quests: { { [string]: any } },
 }
 
 local store = nil
@@ -47,6 +54,13 @@ local function copyDefaultData(): PlayerData
 		checkpointsClaimed = {},
 		respawnWorld = 1,
 		respawnIndex = 0,
+		lastSeenAt = 0,
+		permanentGrowthBonus = 0,
+		groupChestClaimed = false,
+		streakCount = 0,
+		streakLastDate = "",
+		questDate = "",
+		quests = {},
 	}
 end
 
@@ -68,17 +82,35 @@ local function sanitize(result: any): PlayerData
 		"coins",
 		"respawnWorld",
 		"respawnIndex",
+		"lastSeenAt",
+		"permanentGrowthBonus",
+		"streakCount",
 	}) do
 		if typeof(result[numberField]) == "number" then
 			data[numberField] = result[numberField]
 		end
 	end
 
-	if typeof(result.tutorialDone) == "boolean" then
-		data.tutorialDone = result.tutorialDone
+	for _, booleanField in ipairs({ "tutorialDone", "groupChestClaimed" }) do
+		if typeof(result[booleanField]) == "boolean" then
+			data[booleanField] = result[booleanField]
+		end
 	end
-	if typeof(result.equippedPet) == "string" then
-		data.equippedPet = result.equippedPet
+
+	for _, stringField in ipairs({ "equippedPet", "streakLastDate", "questDate" }) do
+		if typeof(result[stringField]) == "string" then
+			data[stringField] = result[stringField]
+		end
+	end
+
+	-- Quests are structured little tables; QuestService re-rolls on any
+	-- mismatch, so passing well-formed entries through is enough.
+	if typeof(result.quests) == "table" then
+		for _, quest in ipairs(result.quests) do
+			if typeof(quest) == "table" and typeof(quest.key) == "string" then
+				table.insert(data.quests, quest)
+			end
+		end
 	end
 
 	if typeof(result.pets) == "table" then

@@ -11,6 +11,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Client = script.Parent
+local QuestGui = require(Client.QuestGui)
+local RebirthGui = require(Client.RebirthGui)
 local Toast = require(Client.Toast)
 local UiBuilder = require(Client.UiBuilder)
 
@@ -367,6 +369,55 @@ local function buildShopWindow(parent: Instance): Frame
 		)
 	end
 
+	-- Value packs: escalating one-time bundles, banner-styled so the
+	-- Starter Pack is the first thing a new player's eye lands on.
+	createSectionHeader(cardList, order, "VALUE PACKS", FEATURED_COLOR)
+	order += 1
+
+	local function wireProductCard(button: TextButton, product: { [string]: any })
+		if product.productId ~= 0 then
+			button.BackgroundColor3 = ACCENT_COLOR
+			button.Text = string.format("R$ %d", product.robuxPrice)
+		else
+			button.BackgroundColor3 = DISABLED_COLOR
+			button.Text = "COMING SOON"
+		end
+
+		button.Activated:Connect(function()
+			if product.productId ~= 0 then
+				MarketplaceService:PromptProductPurchase(localPlayer, product.productId)
+			else
+				Toast.show("Packs unlock once the game is published!")
+			end
+		end)
+	end
+
+	-- Featured styling already gives every pack the shimmer and shining
+	-- title treatment.
+	for _, pack in ipairs(GameConfig.packs) do
+		local row = createRow(cardList, order, 110)
+		order += 1
+		wireProductCard(
+			createCard(row, 1, 1, pack.name, pack.description, FEATURED_COLOR, true),
+			pack
+		)
+	end
+
+	local luckRow = createRow(cardList, order, 110)
+	order += 1
+	wireProductCard(
+		createCard(
+			luckRow,
+			1,
+			1,
+			GameConfig.serverLuck.name,
+			GameConfig.serverLuck.description,
+			FEATURED_COLOR,
+			true
+		),
+		GameConfig.serverLuck
+	)
+
 	return window
 end
 
@@ -406,23 +457,17 @@ function ShopGui.start()
 		end
 	end)
 
+	-- Rebirth opens its own page now; the shine marks it special.
 	local rebirthButton = createSideButton(buttonColumn, 2, "Rebirth")
-	rebirthButton.Activated:Connect(function()
-		task.spawn(function()
-			local attemptRebirth = Remotes.get("AttemptRebirth") :: RemoteFunction
+	rebirthButton.BackgroundColor3 = Color3.fromRGB(120, 60, 180)
+	UiBuilder.shimmer(rebirthButton)
+	rebirthButton.Activated:Connect(RebirthGui.open)
 
-			-- InvokeServer throws if the server errors mid-call; a toast
-			-- beats a silent dead button.
-			local invoked, _success, message = pcall(function()
-				return attemptRebirth:InvokeServer()
-			end)
-
-			if invoked and message ~= nil then
-				Toast.show(message)
-			elseif not invoked then
-				Toast.show("Something went wrong -- try again.")
-			end
-		end)
+	local questsButton = createSideButton(buttonColumn, 3, "Quests")
+	questsButton.BackgroundColor3 = Color3.fromRGB(130, 110, 20)
+	UiBuilder.shimmer(questsButton)
+	questsButton.Activated:Connect(function()
+		QuestGui.toggle()
 	end)
 
 	-- The Shrink button exists only for Instant Shrink owners, appearing
@@ -432,7 +477,7 @@ function ShopGui.start()
 		local existing = buttonColumn:FindFirstChild("ShrinkButton")
 
 		if owns and existing == nil then
-			local shrinkButton = createSideButton(buttonColumn, 3, "Shrink")
+			local shrinkButton = createSideButton(buttonColumn, 4, "Shrink")
 			shrinkButton.Name = "ShrinkButton"
 			shrinkButton.Activated:Connect(function()
 				task.spawn(function()
