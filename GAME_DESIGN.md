@@ -69,13 +69,37 @@ in `GameConfig.economy/potions/upgrades`.
 
 ## Pets
 
-Each world has an egg capsule (`EggStand` tag). Coin eggs hold 5 pets on
-3 rarity tiers; tiers slide up one per world, so later eggs are strictly
+Each world has a themed egg capsule (`EggStand` tag): the egg's shell
+matches its name -- spotted grass for the Meadow Egg, riveted steel for
+the Vent Egg, crack-glowing basalt for the Ember Egg, haloed ice for
+the Cloud Egg -- inside a glass pod with holo rings and particles.
+
+Every pet is a real model from the Sea Animals asset pack
+(`ReplicatedStorage.Assets.Models`); rarer tiers map to cooler animals
+(commons are plain fish and crabs, the top tiers are nebula whales,
+galaxy axolotls, and ancient krakens). Coin eggs hold 5 pets on 3
+rarity tiers; tiers slide up one per world, so later eggs are strictly
 better. Rarity sets the pet's permanent growth bonus. One pet equips at
-a time and follows you around. Each world also sells a Robux **royal
-egg** (3 exclusive stronger pets), and a **limited Ultra Dragon** sits
-on a pedestal at spawn. Inventory lives in the **Backpack** (bottom-left
+a time (by inventory index, so duplicates are separate creatures) and
+follows you around. Each world also sells a Robux **royal egg** (3
+exclusive stronger pets), and a **limited Ancient Kraken** sits on a
+pedestal at spawn. Inventory lives in the **Backpack** (bottom-left
 button): Pets, Boosts, and a placeholder tab.
+
+Hatching hides the odds menu and plays a fullscreen cinematic: the egg
+drops in, shakes in three escalating bursts, cracks in a flash with
+rays and confetti, then the pet spins out with its tier and mutation
+shown under its name -- plus a box to name the pet on the spot. Names
+pass Roblox's text filter server-side before they are stored, and show
+on the follower's tag and the backpack card.
+
+**Mutations** (config `mutations`): every hatch rolls at most one, from
+Shiny (1 in 20, x1.5 bonus) up through Golden, Frozen, Electric,
+Shadow, Rainbow, and Cosmic (1 in ~1700, x5 bonus). Rarer mutations
+grow the pet's body bigger and carry their own aura shell, particles,
+and glow; the mutation is labeled in its color under the pet's name at
+hatch, in the backpack, and on the follower. Combined odds stay under
+10% so a mutation always feels like an event.
 
 ## Engagement systems
 
@@ -83,7 +107,7 @@ button): Pets, Boosts, and a placeholder tab.
   with a welcome-back popup. **AFK pods** at spawn grow you hands-free.
 - **Events**: Golden Pads (random pad per world, x5, gold while lit) and
   Falling Stars (beacon beam; first touch wins size + coins).
-- **Shiny hatches**: any hatch has a 5% shiny chance (x1.5 bonus).
+- **Mutation hatches**: any hatch can roll one mutation (see Pets).
   Server Luck (Robux) and rebirth luck skew the top-tier odds.
 - **Daily quests + streak**: three rolled per day (`questTemplates`),
   seven-day streak calendar, all claims server-validated. The **group

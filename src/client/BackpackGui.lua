@@ -60,8 +60,12 @@ end
 
 local function fillPetsTab(page: ScrollingFrame)
 	local petsJson = localPlayer:GetAttribute("PetsJson")
-	local equipped = localPlayer:GetAttribute("EquippedPet")
+	local namesJson = localPlayer:GetAttribute("PetNamesJson")
+	local equippedIndex = localPlayer:GetAttribute("EquippedPetIndex")
 	local petIds = if typeof(petsJson) == "string" then HttpService:JSONDecode(petsJson) else {}
+	local nicknames = if typeof(namesJson) == "string"
+		then HttpService:JSONDecode(namesJson)
+		else {}
 
 	if #petIds == 0 then
 		UiBuilder.create("TextLabel", {
@@ -84,13 +88,17 @@ local function fillPetsTab(page: ScrollingFrame)
 			continue
 		end
 
-		local isEquipped = petId == equipped
+		-- Duplicates of one species are separate pets, so cards key off
+		-- the inventory index, and equip requests send that index.
+		local isEquipped = order == equippedIndex
 		local rank = PetModels.tierRank(info.tierName)
+		local nickname = nicknames[tostring(order)]
+		local mutation = info.mutation
 
 		-- Every card gets the same outline treatment (thickness 2, tier
 		-- color; green when equipped) so the grid reads as one set.
 		local card = UiBuilder.create("Frame", {
-			Name = petId,
+			Name = "Pet" .. order,
 			LayoutOrder = if isEquipped then 0 else order,
 			Size = UDim2.new(0, 150, 0, 196),
 			BackgroundColor3 = CARD_COLOR,
@@ -114,7 +122,7 @@ local function fillPetsTab(page: ScrollingFrame)
 		local viewportButton = UiBuilder.create("TextButton", {
 			Name = "ViewportButton",
 			Position = UDim2.new(0, 8, 0, 6),
-			Size = UDim2.new(1, -16, 0, 84),
+			Size = UDim2.new(1, -16, 0, 80),
 			BackgroundColor3 = Color3.fromRGB(28, 34, 44),
 			BorderSizePixel = 0,
 			Text = "",
@@ -132,13 +140,15 @@ local function fillPetsTab(page: ScrollingFrame)
 			UiBuilder.popOpen(card)
 		end)
 
+		-- Nickname (or species) on top; a nicknamed pet shows its
+		-- species in the tier line below.
 		local nameLabel = UiBuilder.create("TextLabel", {
 			Name = "PetName",
-			Position = UDim2.new(0, 8, 0, 92),
-			Size = UDim2.new(1, -16, 0, 20),
+			Position = UDim2.new(0, 8, 0, 88),
+			Size = UDim2.new(1, -16, 0, 18),
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBlack,
-			Text = info.name,
+			Text = if nickname ~= nil then nickname else info.baseName,
 			TextColor3 = Color3.fromRGB(255, 255, 255),
 			TextScaled = true,
 			Parent = card,
@@ -148,15 +158,36 @@ local function fillPetsTab(page: ScrollingFrame)
 			UiBuilder.shineText(nameLabel)
 		end
 
+		-- The mutation sits right under the name, in its own color,
+		-- exactly like the hatch reveal showed it.
+		if mutation ~= nil then
+			UiBuilder.create("TextLabel", {
+				Name = "PetMutation",
+				Position = UDim2.new(0, 8, 0, 106),
+				Size = UDim2.new(1, -16, 0, 14),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBlack,
+				Text = "\u{2726} " .. string.upper(mutation.name) .. " \u{2726}",
+				TextColor3 = mutation.color,
+				TextSize = 12,
+				Parent = card,
+			})
+		end
+
 		UiBuilder.create("TextLabel", {
 			Name = "PetTier",
-			Position = UDim2.new(0, 8, 0, 114),
+			Position = UDim2.new(0, 8, 0, if mutation ~= nil then 120 else 108),
 			Size = UDim2.new(1, -16, 0, 34),
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBold,
-			Text = string.format("%s\n+%d%% growth", info.tierName, info.bonus * 100),
+			Text = string.format(
+				"%s (%s)\n+%d%% growth",
+				info.baseName,
+				info.tierName,
+				info.bonus * 100
+			),
 			TextColor3 = info.tierColor,
-			TextSize = 13,
+			TextSize = 12,
 			Parent = card,
 		})
 
@@ -182,7 +213,7 @@ local function fillPetsTab(page: ScrollingFrame)
 
 				-- InvokeServer throws if the server errors mid-call.
 				local invoked, _success, message = pcall(function()
-					return equipPet:InvokeServer(if isEquipped then "" else petId)
+					return equipPet:InvokeServer(if isEquipped then 0 else order)
 				end)
 
 				Toast.show(if invoked then message else "Something went wrong -- try again.")
@@ -466,18 +497,15 @@ function BackpackGui.start()
 		end
 	end)
 
-	-- Live refresh while open, so hatching or equipping shows instantly.
-	localPlayer:GetAttributeChangedSignal("PetsJson"):Connect(function()
-		if window.Visible then
-			refreshPage()
-		end
-	end)
-
-	localPlayer:GetAttributeChangedSignal("EquippedPet"):Connect(function()
-		if window.Visible then
-			refreshPage()
-		end
-	end)
+	-- Live refresh while open, so hatching, naming, or equipping shows
+	-- instantly.
+	for _, attributeName in ipairs({ "PetsJson", "PetNamesJson", "EquippedPetIndex" }) do
+		localPlayer:GetAttributeChangedSignal(attributeName):Connect(function()
+			if window.Visible then
+				refreshPage()
+			end
+		end)
+	end
 
 	UiBuilder.cartoonizeWindow(window, Color3.fromRGB(255, 121, 198))
 	UiBuilder.cartoonify(buttonHolder)

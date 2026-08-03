@@ -2,6 +2,6 @@
 # (https://github.com/rojo-rbx/rokit). Run `rokit install` after cloning.
 
 [tools]
-rojo = "rojo-rbx/rojo@7.4.4"
+rojo = "rojo-rbx/rojo@7.7.0"
 stylua = "JohnnyMorganz/StyLua@2.0.2"
 selene = "Kampfkarren/selene@0.28.0"
