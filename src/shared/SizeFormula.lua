@@ -39,8 +39,10 @@ function SizeFormula.walkSpeed(speedSetting: number, scale: number, potionBonus:
 	return math.clamp(speedSetting + sizeBonus + potionBonus, 8, GameConfig.speed.hardCap)
 end
 
--- Square-root curve so big characters jump meaningfully higher (walls!)
--- without breaking physics.
+--[[
+	Square-root curve so big characters jump meaningfully higher (walls!)
+	without breaking physics.
+]]
 function SizeFormula.jumpPowerForScale(scale: number): number
 	return math.clamp(50 * math.sqrt(scale), 40, 120)
 end

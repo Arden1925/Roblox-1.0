@@ -30,8 +30,6 @@ local TIER_RANKS = {
 	Ultra = 6,
 }
 
-local PetModels = {}
-
 local function hashString(text: string): number
 	local hash = 5381
 
@@ -61,6 +59,8 @@ local function createPart(properties: { [string]: any }): BasePart
 
 	return part
 end
+
+local PetModels = {}
 
 function PetModels.tierRank(tierName: string): number
 	return TIER_RANKS[tierName] or 1

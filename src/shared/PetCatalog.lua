@@ -21,14 +21,14 @@ export type PetInfo = {
 	worldIndex: number?,
 }
 
-local PetCatalog = {}
-
-local infoById: { [string]: PetInfo } = {}
-
 -- Coin-egg pets: two on the egg's lowest tier, two on its middle, one
 -- on top; tiers slide up one per world so later eggs are strictly
 -- better.
 local EGG_SLOT_TIER_OFFSETS = { 0, 0, 1, 1, 2 }
+
+local SHINY_SUFFIX = "*shiny"
+
+local infoById: { [string]: PetInfo } = {}
 
 local function tierAt(index: number): { name: string, color: { number }, bonus: number }
 	local clamped = math.clamp(index, 1, #GameConfig.petTiers)
@@ -75,7 +75,7 @@ register({
 	worldIndex = nil,
 })
 
-local SHINY_SUFFIX = "*shiny"
+local PetCatalog = {}
 
 function PetCatalog.shinyId(petId: string): string
 	return petId .. SHINY_SUFFIX
