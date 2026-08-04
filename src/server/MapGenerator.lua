@@ -15,6 +15,7 @@
 local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
@@ -37,6 +38,13 @@ local STEP_COLOR = Color3.fromRGB(223, 228, 234)
 local PORTAL_COLOR = Color3.fromRGB(97, 255, 66)
 local COIN_COLOR = Color3.fromRGB(253, 203, 110)
 local CHECKPOINT_COLOR = Color3.fromRGB(0, 206, 201)
+
+-- The station shopkeeper's outfit.
+local SHOPKEEPER_TEAL = Color3.fromRGB(34, 166, 179)
+local SHOPKEEPER_SKIN = Color3.fromRGB(255, 205, 148)
+local SHOPKEEPER_SHIRT = Color3.fromRGB(245, 246, 250)
+local SHOPKEEPER_PANTS = Color3.fromRGB(62, 74, 96)
+local SHOPKEEPER_FACE = Color3.fromRGB(30, 30, 35)
 
 local MapGenerator = {}
 
@@ -428,6 +436,155 @@ local function createStation(parent: Instance, worldIndex: number, minZ: number)
 	addBillboard(station, "STATION", Color3.fromRGB(129, 236, 236), 6)
 	addOutline(station, Color3.fromRGB(129, 236, 236))
 	CollectionService:AddTag(station, "ShopStation")
+end
+
+--[[
+	A blocky shopkeeper standing beside every station: built entirely
+	from parts (no marketplace assets, so nothing to vet and nothing
+	that can break), wearing the station's teal as an apron and waving
+	one arm forever. Pure decoration -- the station itself still owns
+	the prompt.
+]]
+local function createShopkeeper(parent: Instance, _worldIndex: number, minZ: number)
+	local model = Instance.new("Model")
+	model.Name = "Shopkeeper"
+
+	-- Stands to the station's right, turned to face the plaza. Local
+	-- -Z is the NPC's front after this rotation.
+	local base = CFrame.new(-37, WorldLayout.baseY, minZ + 36) * CFrame.Angles(0, math.rad(-90), 0)
+
+	for _, legSide in ipairs({ -1, 1 }) do
+		createPart({
+			Name = "Leg",
+			Size = Vector3.new(0.85, 1.9, 0.85),
+			CFrame = base * CFrame.new(legSide * 0.5, 0.95, 0),
+			Color = SHOPKEEPER_PANTS,
+			Material = Enum.Material.SmoothPlastic,
+			CanCollide = false,
+			Parent = model,
+		})
+	end
+
+	createPart({
+		Name = "Torso",
+		Size = Vector3.new(2, 2, 1),
+		CFrame = base * CFrame.new(0, 2.9, 0),
+		Color = SHOPKEEPER_SHIRT,
+		Material = Enum.Material.SmoothPlastic,
+		CanCollide = false,
+		Parent = model,
+	})
+
+	createPart({
+		Name = "Apron",
+		Size = Vector3.new(1.7, 1.6, 0.15),
+		CFrame = base * CFrame.new(0, 2.75, -0.58),
+		Color = SHOPKEEPER_TEAL,
+		Material = Enum.Material.SmoothPlastic,
+		CanCollide = false,
+		Parent = model,
+	})
+
+	-- A gold coin badge on the apron, so the job reads at a glance.
+	createPart({
+		Name = "ApronBadge",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.12, 0.55, 0.55),
+		CFrame = base * CFrame.new(0, 2.95, -0.68) * CFrame.Angles(0, math.rad(90), 0),
+		Color = COIN_COLOR,
+		Material = Enum.Material.SmoothPlastic,
+		CanCollide = false,
+		Parent = model,
+	})
+
+	createPart({
+		Name = "LeftArm",
+		Size = Vector3.new(0.8, 1.9, 0.8),
+		CFrame = base * CFrame.new(-1.42, 2.9, 0),
+		Color = SHOPKEEPER_SKIN,
+		Material = Enum.Material.SmoothPlastic,
+		CanCollide = false,
+		Parent = model,
+	})
+
+	-- The right arm pivots at the shoulder and waves forever. Both
+	-- poses share the same shoulder pivot so the tween reads as a
+	-- swing, not a slide.
+	local shoulder = base * CFrame.new(1.42, 3.75, 0)
+	local wavePoseA = shoulder * CFrame.Angles(0, 0, math.rad(130)) * CFrame.new(0, -0.95, 0)
+	local wavePoseB = shoulder * CFrame.Angles(0, 0, math.rad(170)) * CFrame.new(0, -0.95, 0)
+
+	local rightArm = createPart({
+		Name = "RightArm",
+		Size = Vector3.new(0.8, 1.9, 0.8),
+		CFrame = wavePoseA,
+		Color = SHOPKEEPER_SKIN,
+		Material = Enum.Material.SmoothPlastic,
+		CanCollide = false,
+		Parent = model,
+	})
+
+	TweenService:Create(
+		rightArm,
+		TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+		{ CFrame = wavePoseB }
+	):Play()
+
+	local head = createPart({
+		Name = "Head",
+		Size = Vector3.new(1.5, 1.5, 1.5),
+		CFrame = base * CFrame.new(0, 4.65, 0),
+		Color = SHOPKEEPER_SKIN,
+		Material = Enum.Material.SmoothPlastic,
+		CanCollide = false,
+		Parent = model,
+	})
+
+	for _, eyeSide in ipairs({ -1, 1 }) do
+		createPart({
+			Name = "Eye",
+			Size = Vector3.new(0.18, 0.32, 0.1),
+			CFrame = base * CFrame.new(eyeSide * 0.33, 4.8, -0.76),
+			Color = SHOPKEEPER_FACE,
+			Material = Enum.Material.SmoothPlastic,
+			CanCollide = false,
+			Parent = model,
+		})
+	end
+
+	createPart({
+		Name = "Smile",
+		Size = Vector3.new(0.6, 0.12, 0.1),
+		CFrame = base * CFrame.new(0, 4.42, -0.76),
+		Color = SHOPKEEPER_FACE,
+		Material = Enum.Material.SmoothPlastic,
+		CanCollide = false,
+		Parent = model,
+	})
+
+	createPart({
+		Name = "CapDome",
+		Size = Vector3.new(1.6, 0.45, 1.6),
+		CFrame = base * CFrame.new(0, 5.5, 0),
+		Color = SHOPKEEPER_TEAL,
+		Material = Enum.Material.SmoothPlastic,
+		CanCollide = false,
+		Parent = model,
+	})
+
+	createPart({
+		Name = "CapBrim",
+		Size = Vector3.new(1.6, 0.12, 0.7),
+		CFrame = base * CFrame.new(0, 5.32, -1),
+		Color = SHOPKEEPER_TEAL,
+		Material = Enum.Material.SmoothPlastic,
+		CanCollide = false,
+		Parent = model,
+	})
+
+	addBillboard(head, "SHOPKEEPER", Color3.fromRGB(129, 236, 236), 3)
+
+	model.Parent = parent
 end
 
 local function createMysteryMachine(parent: Instance, worldIndex: number, minZ: number)
@@ -1541,6 +1698,7 @@ local function buildWorld(parent: Instance, worldIndex: number)
 	createPortal(parent, worldIndex, minZ)
 	createEggStand(parent, worldIndex, minZ)
 	createStation(parent, worldIndex, minZ)
+	createShopkeeper(parent, worldIndex, minZ)
 	createWorldDecor(parent, worldIndex, minZ)
 	createCrusher(parent, worldIndex, minZ)
 	createStageStrips(parent, minZ)

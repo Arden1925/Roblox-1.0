@@ -14,6 +14,8 @@ local HOVER_IN_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Elastic, Enum.EasingD
 local HOVER_OUT_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local OPEN_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local PULSE_INFO = TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+local POP_IN_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local SHAKE_STEP_INFO = TweenInfo.new(0.06, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 
 -- The cartoon theme, modeled on the big simulator games: rounded
 -- Fredoka lettering with sticker outlines, white panels with thick navy
@@ -76,6 +78,12 @@ end
 -- Cartoon hover: the button bounces up in size with a little tilt, then
 -- springs back. UIScale means the button's own Size (and any layout
 -- using it) is never disturbed.
+--[[
+	Hover feedback: the button swells, and gives one quick shake that
+	always settles back to straight. The old version held a tilt for the
+	whole hover, which left buttons frozen mid-lean whenever a layer
+	covered them before MouseLeave fired.
+]]
 function UiBuilder.hoverPop(button: GuiButton)
 	local scale = UiBuilder.create("UIScale", {
 		Scale = 1,
@@ -83,13 +91,35 @@ function UiBuilder.hoverPop(button: GuiButton)
 	}) :: UIScale
 
 	local restRotation = button.Rotation
+	local shakeToken = 0
+
+	local function shake()
+		shakeToken += 1
+		local token = shakeToken
+
+		task.spawn(function()
+			for _, angle in ipairs({ -2.5, 2, -1, 0 }) do
+				if token ~= shakeToken then
+					return
+				end
+
+				local step = TweenService:Create(button, SHAKE_STEP_INFO, {
+					Rotation = restRotation + angle,
+				})
+				step:Play()
+				step.Completed:Wait()
+			end
+		end)
+	end
 
 	button.MouseEnter:Connect(function()
 		TweenService:Create(scale, HOVER_IN_INFO, { Scale = 1.12 }):Play()
-		TweenService:Create(button, HOVER_IN_INFO, { Rotation = restRotation - 3 }):Play()
+		shake()
 	end)
 
 	button.MouseLeave:Connect(function()
+		-- Invalidate any running shake so it cannot fight the reset.
+		shakeToken += 1
 		TweenService:Create(scale, HOVER_OUT_INFO, { Scale = 1 }):Play()
 		TweenService:Create(button, HOVER_OUT_INFO, { Rotation = restRotation }):Play()
 	end)
@@ -404,6 +434,47 @@ function UiBuilder.iconButton(
 	})
 
 	return button
+end
+
+--[[
+	Makes a scrolling list feel bubbly: rubber-band overscroll, and
+	every item pops in with a springy stagger. Works both for the first
+	fill and for items added later; a fresh burst of items restarts the
+	stagger so rebuilt lists bounce in again.
+]]
+function UiBuilder.bubbly(scroll: ScrollingFrame)
+	scroll.ElasticBehavior = Enum.ElasticBehavior.Always
+	scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+
+	local lastAddedAt = 0
+	local burstCount = 0
+
+	local function popIn(child: Instance)
+		if not child:IsA("GuiObject") then
+			return
+		end
+
+		local now = os.clock()
+		if now - lastAddedAt > 0.2 then
+			burstCount = 0
+		end
+		lastAddedAt = now
+		burstCount += 1
+
+		local scale = UiBuilder.create("UIScale", {
+			Scale = 0,
+			Parent = child,
+		}) :: UIScale
+
+		task.delay(math.min(burstCount, 10) * 0.05, function()
+			TweenService:Create(scale, POP_IN_INFO, { Scale = 1 }):Play()
+		end)
+	end
+
+	for _, child in ipairs(scroll:GetChildren()) do
+		popIn(child)
+	end
+	scroll.ChildAdded:Connect(popIn)
 end
 
 --[[

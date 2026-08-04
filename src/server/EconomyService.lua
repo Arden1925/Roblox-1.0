@@ -125,6 +125,12 @@ function EconomyService.spendForEgg(player: Player, cost: number): boolean
 	return trySpend(player, cost)
 end
 
+-- Generic coin sink for one-off purchases (like the extra pet slot):
+-- checks the balance and deducts in one step.
+function EconomyService.spendCoins(player: Player, cost: number): boolean
+	return trySpend(player, cost)
+end
+
 -- Wired as BuyPotion.OnServerInvoke.
 function EconomyService.buyPotion(player: Player, potionKey: any): (boolean, string)
 	local potion = if typeof(potionKey) == "string" then potionByKey(potionKey) else nil

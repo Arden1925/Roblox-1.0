@@ -17,6 +17,7 @@ local localPlayer = Players.LocalPlayer
 
 local label: TextLabel? = nil
 local activeToken = 0
+local activeFades: { Tween } = {}
 
 local Toast = {}
 
@@ -72,9 +73,24 @@ function Toast.show(message: string)
 	activeToken += 1
 	local token = activeToken
 
+	-- A fade already in flight would keep dragging the new message
+	-- toward invisible; kill it before resetting.
+	for _, fade in ipairs(activeFades) do
+		fade:Cancel()
+	end
+	table.clear(activeFades)
+
 	toastLabel.Text = message
 	toastLabel.TextTransparency = 0
 	toastLabel.BackgroundTransparency = 0.25
+
+	-- The cartoon outline does not obey TextTransparency, so it must be
+	-- reset and faded explicitly or every toast leaves a permanent dark
+	-- ghost of itself at the bottom of the screen.
+	local outline = toastLabel:FindFirstChild("TextOutline")
+	if outline ~= nil and outline:IsA("UIStroke") then
+		outline.Transparency = 0
+	end
 
 	task.delay(VISIBLE_SECONDS, function()
 		-- A newer toast owns the label now; let it manage the fade.
@@ -87,6 +103,13 @@ function Toast.show(message: string)
 			BackgroundTransparency = 1,
 		})
 		fadeTween:Play()
+		table.insert(activeFades, fadeTween)
+
+		if outline ~= nil and outline:IsA("UIStroke") then
+			local outlineFade = TweenService:Create(outline, FADE_INFO, { Transparency = 1 })
+			outlineFade:Play()
+			table.insert(activeFades, outlineFade)
+		end
 	end)
 end
 

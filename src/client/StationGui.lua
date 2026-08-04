@@ -119,9 +119,16 @@ local function invokeAndToast(remoteName: string, argument: string?)
 end
 
 local function openStation(window: Frame, worldIndex: number)
+	-- ScrollingFrames are not Frames, so the old Frame-or-TextLabel
+	-- check silently skipped the two scrolling columns -- every reopen
+	-- stacked a fresh pair on top of the old ones, and the stale layer
+	-- underneath is the ghost content players saw while scrolling.
 	for _, child in ipairs(window:GetChildren()) do
-		local clearable = child:IsA("Frame") or child:IsA("TextLabel")
-		if clearable and child.Name ~= "CloseButton" and child.Name ~= "HeaderBanner" then
+		if
+			child:IsA("GuiObject")
+			and child.Name ~= "CloseButton"
+			and child.Name ~= "HeaderBanner"
+		then
 			child:Destroy()
 		end
 	end
@@ -171,6 +178,8 @@ local function openStation(window: Frame, worldIndex: number)
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = columnFrame,
 		})
+
+		UiBuilder.bubbly(columnFrame)
 
 		columnFrames[column.name] = columnFrame
 	end

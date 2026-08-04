@@ -30,9 +30,20 @@ local FROST_HANDLE = Color3.fromRGB(191, 228, 250)
 local FROST_EDGE = Color3.fromRGB(127, 182, 221)
 local FROST_FLAKE = Color3.fromRGB(223, 242, 255)
 
+-- The size slider's own pair of moods: amber swell for growing, cool
+-- lavender squish for shrinking.
+local GROW_FILL = Color3.fromRGB(255, 184, 76)
+local GROW_EDGE = Color3.fromRGB(255, 214, 120)
+local SHRINK_FILL = Color3.fromRGB(162, 155, 254)
+local SHRINK_HANDLE = Color3.fromRGB(216, 210, 255)
+local SHRINK_EDGE = Color3.fromRGB(140, 130, 240)
+
 -- Tiny drags still count as a direction; the value range is only 8
 -- units wide, so per-move deltas are small.
 local DIRECTION_THRESHOLD = 0.03
+-- The size slider reports 0..1 fractions, so its direction threshold
+-- must be far finer than the speed slider's 8-unit range.
+local FRACTION_THRESHOLD = 0.004
 local RETRIGGER_SECONDS = 0.1
 local PARTICLE_SECONDS = 0.28
 local MELT_DELAY_SECONDS = 0.45
@@ -54,6 +65,7 @@ type SliderEffects = {
 	halo: Frame,
 	icicles: { Frame },
 	generation: number,
+	neutralFill: Color3,
 }
 
 --[[
@@ -63,7 +75,7 @@ type SliderEffects = {
 	child always renders in front of its parent under Sibling ZIndex
 	rules, so it sits on the track and follows the handle by signal.
 ]]
-local function createSliderEffects(sliderHolder: Frame): SliderEffects?
+local function createSliderEffects(sliderHolder: Frame, neutralFill: Color3): SliderEffects?
 	local track = sliderHolder:FindFirstChild("SliderTrack")
 	if track == nil then
 		return nil
@@ -77,7 +89,7 @@ local function createSliderEffects(sliderHolder: Frame): SliderEffects?
 
 	local handleStroke = handle:FindFirstChildOfClass("UIStroke")
 	if handleStroke == nil then
-		handleStroke = UiBuilder.stroke(handle, SPEED_COLOR, 2)
+		handleStroke = UiBuilder.stroke(handle, neutralFill, 2)
 	end
 
 	local halo = UiBuilder.create("Frame", {
@@ -119,6 +131,7 @@ local function createSliderEffects(sliderHolder: Frame): SliderEffects?
 		halo = halo,
 		icicles = icicles,
 		generation = 0,
+		neutralFill = neutralFill,
 	}
 end
 
@@ -132,13 +145,13 @@ local function meltLater(effects: SliderEffects)
 		end
 
 		TweenService:Create(effects.fill, RECOLOR_INFO, {
-			BackgroundColor3 = SPEED_COLOR,
+			BackgroundColor3 = effects.neutralFill,
 		}):Play()
 		TweenService:Create(effects.handle, RECOLOR_INFO, {
 			BackgroundColor3 = HANDLE_NEUTRAL,
 		}):Play()
 		TweenService:Create(effects.handleStroke, RECOLOR_INFO, {
-			Color = SPEED_COLOR,
+			Color = effects.neutralFill,
 			Thickness = 2,
 		}):Play()
 		TweenService:Create(effects.halo, RECOLOR_INFO, {
@@ -148,6 +161,20 @@ local function meltLater(effects: SliderEffects)
 		for _, icicle in ipairs(effects.icicles) do
 			TweenService:Create(icicle, ICICLE_INFO, {
 				Size = UDim2.new(0, ICICLE_WIDTH, 0, 0),
+			}):Play()
+		end
+	end)
+end
+
+-- Text glyphs get their sticker outline from the cartoon pass a beat
+-- after parenting, and outlines ignore TextTransparency; this fades
+-- the outline alongside any glyph that fades itself out.
+local function fadeOutlineLater(glyph: Instance, seconds: number)
+	task.defer(function()
+		local outline = glyph:FindFirstChild("TextOutline")
+		if outline ~= nil and outline:IsA("UIStroke") then
+			TweenService:Create(outline, TweenInfo.new(seconds, Enum.EasingStyle.Quad), {
+				Transparency = 1,
 			}):Play()
 		end
 	end)
@@ -180,6 +207,11 @@ local function spawnSparks(effects: SliderEffects)
 		flick.Completed:Connect(function()
 			spark:Destroy()
 		end)
+
+		-- The cartoon pass adds the outline a beat after parenting, and
+		-- outlines ignore TextTransparency -- fade it too or the glyph
+		-- ends as a dark ghost for a frame.
+		fadeOutlineLater(spark, 0.25)
 	end
 end
 
@@ -205,6 +237,65 @@ local function spawnSnowflake(effects: SliderEffects)
 	drift.Completed:Connect(function()
 		flake:Destroy()
 	end)
+
+	fadeOutlineLater(flake, 0.6)
+end
+
+local function spawnGrowGlyphs(effects: SliderEffects)
+	for glyphIndex = 1, 2 do
+		local direction = if glyphIndex == 1 then -1 else 1
+		local glyph = UiBuilder.create("TextLabel", {
+			Name = "GrowGlyph",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0.5, direction * 9, 0, -2),
+			Size = UDim2.new(0, 16, 0, 16),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBlack,
+			Text = "+",
+			TextColor3 = GROW_EDGE,
+			TextSize = 15,
+			Parent = effects.handle,
+		})
+
+		local rise = TweenService:Create(glyph, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
+			Position = UDim2.new(0.5, direction * 18, 0, -16),
+			TextSize = 19,
+			TextTransparency = 1,
+		})
+		rise:Play()
+		rise.Completed:Connect(function()
+			glyph:Destroy()
+		end)
+
+		fadeOutlineLater(glyph, 0.3)
+	end
+end
+
+local function spawnShrinkGlyph(effects: SliderEffects)
+	local glyph = UiBuilder.create("TextLabel", {
+		Name = "ShrinkGlyph",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, math.random(-12, 12), 0, -6),
+		Size = UDim2.new(0, 16, 0, 16),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		Text = "-",
+		TextColor3 = SHRINK_HANDLE,
+		TextSize = 17,
+		Parent = effects.handle,
+	})
+
+	local sink = TweenService:Create(glyph, TweenInfo.new(0.45, Enum.EasingStyle.Sine), {
+		Position = glyph.Position + UDim2.new(0, 0, 0, 18),
+		TextSize = 11,
+		TextTransparency = 1,
+	})
+	sink:Play()
+	sink.Completed:Connect(function()
+		glyph:Destroy()
+	end)
+
+	fadeOutlineLater(glyph, 0.45)
 end
 
 -- Charge and frost each repaint the FULL handle state -- including the
@@ -222,6 +313,7 @@ local function playCharge(effects: SliderEffects, withParticles: boolean)
 		Thickness = 4,
 	}):Play()
 	TweenService:Create(effects.halo, RECOLOR_INFO, {
+		BackgroundColor3 = GLOW_EDGE,
 		BackgroundTransparency = 0.55,
 	}):Play()
 
@@ -261,6 +353,66 @@ local function playFrost(effects: SliderEffects, withParticles: boolean)
 
 	if withParticles then
 		spawnSnowflake(effects)
+	end
+
+	meltLater(effects)
+end
+
+-- The size slider's versions of charge and frost: growing swells the
+-- handle warm amber with rising plus signs, shrinking squishes it
+-- lavender with sinking minus signs. Same repaint-everything rule.
+local function playGrow(effects: SliderEffects, withParticles: boolean)
+	TweenService:Create(effects.fill, RECOLOR_INFO, {
+		BackgroundColor3 = GROW_FILL,
+	}):Play()
+	TweenService:Create(effects.handle, RECOLOR_INFO, {
+		BackgroundColor3 = HANDLE_NEUTRAL,
+	}):Play()
+	TweenService:Create(effects.handleStroke, RECOLOR_INFO, {
+		Color = GROW_EDGE,
+		Thickness = 4,
+	}):Play()
+	TweenService:Create(effects.halo, RECOLOR_INFO, {
+		BackgroundColor3 = GROW_EDGE,
+		BackgroundTransparency = 0.55,
+	}):Play()
+
+	for _, icicle in ipairs(effects.icicles) do
+		TweenService:Create(icicle, ICICLE_INFO, {
+			Size = UDim2.new(0, ICICLE_WIDTH, 0, 0),
+		}):Play()
+	end
+
+	if withParticles then
+		spawnGrowGlyphs(effects)
+	end
+
+	meltLater(effects)
+end
+
+local function playShrink(effects: SliderEffects, withParticles: boolean)
+	TweenService:Create(effects.fill, RECOLOR_INFO, {
+		BackgroundColor3 = SHRINK_FILL,
+	}):Play()
+	TweenService:Create(effects.handle, RECOLOR_INFO, {
+		BackgroundColor3 = SHRINK_HANDLE,
+	}):Play()
+	TweenService:Create(effects.handleStroke, RECOLOR_INFO, {
+		Color = SHRINK_EDGE,
+		Thickness = 3,
+	}):Play()
+	TweenService:Create(effects.halo, RECOLOR_INFO, {
+		BackgroundTransparency = 1,
+	}):Play()
+
+	for _, icicle in ipairs(effects.icicles) do
+		TweenService:Create(icicle, ICICLE_INFO, {
+			Size = UDim2.new(0, ICICLE_WIDTH, 0, 0),
+		}):Play()
+	end
+
+	if withParticles then
+		spawnShrinkGlyph(effects)
 	end
 
 	meltLater(effects)
@@ -314,10 +466,13 @@ function SizeSpeedControls.start()
 		Parent = playerGui,
 	})
 
+	-- Bottom-right corner: out of the way of gameplay, mirroring the
+	-- backpack button in the opposite corner, instead of the old box
+	-- floating awkwardly at mid-screen height.
 	local panel = UiBuilder.create("Frame", {
 		Name = "SliderPanel",
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -12, 0.5, 60),
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -12, 1, -12),
 		Size = UDim2.new(0, 190, 0, 160),
 		BackgroundColor3 = PANEL_COLOR,
 		BackgroundTransparency = 0.15,
@@ -390,7 +545,7 @@ function SizeSpeedControls.start()
 		end
 	)
 
-	speedEffects = createSliderEffects(sliderHolder)
+	speedEffects = createSliderEffects(sliderHolder, SPEED_COLOR)
 
 	local sizeSection = createSliderSection(panel, 2, "SIZE (SIZE MASTER)", SIZE_COLOR)
 	local sizeHolder = UiBuilder.create("Frame", {
@@ -401,13 +556,37 @@ function SizeSpeedControls.start()
 		Parent = sizeSection,
 	})
 
+	local lastFraction = 1
+	local lastSizeEffectAt = 0
+	local lastSizeParticleAt = 0
+	local sizeEffects: SliderEffects? = nil
+
 	local function buildSizeControl()
 		for _, child in ipairs(sizeHolder:GetChildren()) do
 			child:Destroy()
 		end
+		sizeEffects = nil
 
 		if localPlayer:GetAttribute("OwnsSizeMaster") == true then
 			UiBuilder.slider(sizeHolder, 0, 1, 1, SIZE_COLOR, function(fraction)
+				-- Same throttled direction FX as the speed slider, with
+				-- the size slider's own grow/shrink identity.
+				local now = os.clock()
+				if sizeEffects ~= nil and now - lastSizeEffectAt > RETRIGGER_SECONDS then
+					local withParticles = now - lastSizeParticleAt > PARTICLE_SECONDS
+					if fraction > lastFraction + FRACTION_THRESHOLD then
+						lastSizeEffectAt = now
+						playGrow(sizeEffects, withParticles)
+					elseif fraction < lastFraction - FRACTION_THRESHOLD then
+						lastSizeEffectAt = now
+						playShrink(sizeEffects, withParticles)
+					end
+					if withParticles and lastSizeEffectAt == now then
+						lastSizeParticleAt = now
+					end
+				end
+				lastFraction = fraction
+
 				local maxSize = localPlayer:GetAttribute("MaxSize")
 				if typeof(maxSize) ~= "number" then
 					return
@@ -421,6 +600,8 @@ function SizeSpeedControls.start()
 					setDesiredSize:FireServer(target)
 				end)
 			end)
+
+			sizeEffects = createSliderEffects(sizeHolder, SIZE_COLOR)
 		else
 			local unlockButton = UiBuilder.create("TextButton", {
 				Name = "UnlockButton",

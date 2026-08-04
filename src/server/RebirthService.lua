@@ -1,9 +1,10 @@
 --[[
 	Validates rebirths and runs the rebirth machine: a chamber assembles
-	around the player, a syringe arm drains their growth (they visibly
-	shrink), coin orbs spiral out of them into a collector, and the
-	chamber releases them reborn. The reset applies at the END of the
-	cinematic, so what players see is what happens.
+	around the player at their own size, a syringe arm reaches in and
+	drains their growth (they visibly shrink as it draws), coin orbs
+	spiral out of them into a collector, and the chamber releases them
+	reborn. The reset applies at the END of the cinematic, so what
+	players see is what happens.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -47,8 +48,12 @@ end
 
 --[[
 	Builds and animates the machine around the character, yielding until
-	the show is over. Returns nothing of gameplay consequence -- all the
-	real changes happen after it in attemptRebirth.
+	the show is over. The whole rig assembles at the player's own scale
+	(a giant gets a giant machine), the syringe arm travels in until the
+	needle actually reaches their side, and the injection is what drains
+	the growth -- the player shrinks while the needle is in, never on
+	entry. Returns nothing of gameplay consequence -- all the real
+	changes happen after it in attemptRebirth.
 ]]
 local function playCinematic(player: Player)
 	local character = player.Character
@@ -57,12 +62,21 @@ local function playCinematic(player: Player)
 	end
 
 	local rootPart = character:FindFirstChild("HumanoidRootPart")
-	if rootPart == nil then
+	if rootPart == nil or not rootPart:IsA("BasePart") then
 		return
 	end
 
 	local center = rootPart.CFrame
 	rootPart.Anchored = true
+
+	-- The machine scales with the character's current scale, floored at
+	-- 1 so tiny players still get a readable full-size show. This is
+	-- what lets the player stay their pre-rebirth size inside it.
+	local machineScale = 1
+	local state = SizeService.getState(player)
+	if state ~= nil then
+		machineScale = math.max(SizeFormula.scaleForSize(state.currentSize), 1)
+	end
 
 	local machine = Instance.new("Folder")
 	machine.Name = "RebirthMachine"
@@ -71,8 +85,8 @@ local function playCinematic(player: Player)
 	createPart({
 		Name = "MachineBase",
 		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(0.6, 14, 14),
-		CFrame = center * CFrame.new(0, -2.5, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		Size = Vector3.new(0.6, 14, 14) * machineScale,
+		CFrame = center * CFrame.new(0, -2.5 * machineScale, 0) * CFrame.Angles(0, 0, math.rad(90)),
 		Color = MACHINE_METAL,
 		Material = Enum.Material.DiamondPlate,
 		Parent = machine,
@@ -82,8 +96,12 @@ local function playCinematic(player: Player)
 		local angle = pylonIndex * math.pi * 2 / 3
 		local pylon = createPart({
 			Name = "Pylon",
-			Size = Vector3.new(1.4, 12, 1.4),
-			CFrame = center * CFrame.new(math.cos(angle) * 6, 3.5, math.sin(angle) * 6),
+			Size = Vector3.new(1.4, 12, 1.4) * machineScale,
+			CFrame = center * CFrame.new(
+				math.cos(angle) * 6 * machineScale,
+				3.5 * machineScale,
+				math.sin(angle) * 6 * machineScale
+			),
 			Color = MACHINE_METAL,
 			Material = Enum.Material.Metal,
 			Parent = machine,
@@ -91,8 +109,8 @@ local function playCinematic(player: Player)
 
 		createPart({
 			Name = "PylonLight",
-			Size = Vector3.new(1.5, 0.6, 1.5),
-			CFrame = pylon.CFrame * CFrame.new(0, 5, 0),
+			Size = Vector3.new(1.5, 0.6, 1.5) * machineScale,
+			CFrame = pylon.CFrame * CFrame.new(0, 5 * machineScale, 0),
 			Color = MACHINE_GLOW,
 			Material = Enum.Material.Neon,
 			Parent = machine,
@@ -103,21 +121,34 @@ local function playCinematic(player: Player)
 	local tube = createPart({
 		Name = "GlassTube",
 		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(16, 10, 10),
-		CFrame = center * CFrame.new(0, 22, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		Size = Vector3.new(16, 10, 10) * machineScale,
+		CFrame = center * CFrame.new(0, 22 * machineScale, 0) * CFrame.Angles(0, 0, math.rad(90)),
 		Color = Color3.fromRGB(198, 240, 255),
 		Material = Enum.Material.Glass,
 		Transparency = 0.55,
 		Parent = machine,
 	})
 
-	-- Syringe arm: barrel, plunger, needle, angled at the player.
-	local syringePivot = center * CFrame.new(5, 6, 0) * CFrame.Angles(0, 0, math.rad(-40))
+	-- Syringe arm: barrel, plunger fluid, and needle. It starts parked
+	-- outside the tube and later travels in; the two pivots below are
+	-- the parked pose and the pose where the needle tip actually meets
+	-- the character's upper side.
+	local pivotRotation = center.Rotation * CFrame.Angles(0, 0, math.rad(-40))
+	local retractedPivot = CFrame.new(
+		center:PointToWorldSpace(Vector3.new(8 * machineScale, 7 * machineScale, 0))
+	) * pivotRotation
+
+	local needleReach = 3.6 * machineScale
+	local desiredTip =
+		center:PointToWorldSpace(Vector3.new(rootPart.Size.X * 0.45, rootPart.Size.Y * 0.15, 0))
+	local tipOffset = pivotRotation:VectorToWorldSpace(Vector3.new(0, -needleReach, 0))
+	local insertedPivot = CFrame.new(desiredTip - tipOffset) * pivotRotation
+
 	local barrel = createPart({
 		Name = "SyringeBarrel",
 		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(3, 1.4, 1.4),
-		CFrame = syringePivot * CFrame.Angles(0, 0, math.rad(90)),
+		Size = Vector3.new(3, 1.4, 1.4) * machineScale,
+		CFrame = retractedPivot * CFrame.Angles(0, 0, math.rad(90)),
 		Color = Color3.fromRGB(223, 249, 251),
 		Material = Enum.Material.Glass,
 		Transparency = 0.3,
@@ -127,17 +158,17 @@ local function playCinematic(player: Player)
 	local fluid = createPart({
 		Name = "SyringeFluid",
 		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(0.2, 1.1, 1.1),
+		Size = Vector3.new(0.2, 1.1, 1.1) * machineScale,
 		CFrame = barrel.CFrame,
 		Color = SYRINGE_FLUID,
 		Material = Enum.Material.Neon,
 		Parent = machine,
 	})
 
-	createPart({
+	local needle = createPart({
 		Name = "SyringeNeedle",
-		Size = Vector3.new(0.15, 2.4, 0.15),
-		CFrame = syringePivot * CFrame.new(0, -2.4, 0),
+		Size = Vector3.new(0.15, 2.4, 0.15) * machineScale,
+		CFrame = retractedPivot * CFrame.new(0, -2.4 * machineScale, 0),
 		Color = Color3.fromRGB(200, 205, 210),
 		Material = Enum.Material.Metal,
 		Parent = machine,
@@ -146,8 +177,8 @@ local function playCinematic(player: Player)
 	-- Coin collector funnel above; orbs will spiral into it.
 	local funnel = createPart({
 		Name = "CoinFunnel",
-		Size = Vector3.new(3, 2, 3),
-		CFrame = center * CFrame.new(0, 11, 0),
+		Size = Vector3.new(3, 2, 3) * machineScale,
+		CFrame = center * CFrame.new(0, 11 * machineScale, 0),
 		Color = COIN_GOLD,
 		Material = Enum.Material.Metal,
 		Parent = machine,
@@ -157,25 +188,43 @@ local function playCinematic(player: Player)
 
 	-- Act 1: the tube drops and seals the player in.
 	TweenService:Create(tube, TweenInfo.new(0.6, Enum.EasingStyle.Bounce), {
-		CFrame = center * CFrame.new(0, 2.5, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		CFrame = center * CFrame.new(0, 2.5 * machineScale, 0) * CFrame.Angles(0, 0, math.rad(90)),
 	}):Play()
 	task.wait(0.8)
 
-	-- Act 2: the syringe draws the growth out -- the fluid grows as the
-	-- player visibly shrinks.
-	TweenService:Create(fluid, TweenInfo.new(1.2, Enum.EasingStyle.Quad), {
-		Size = Vector3.new(2.4, 1.1, 1.1),
+	-- Act 2: the syringe arm travels in until the needle touches the
+	-- player. All three parts tween to the same pivot so the assembly
+	-- moves as one.
+	local approachInfo = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+	TweenService:Create(barrel, approachInfo, {
+		CFrame = insertedPivot * CFrame.Angles(0, 0, math.rad(90)),
 	}):Play()
+	TweenService:Create(fluid, approachInfo, {
+		CFrame = insertedPivot * CFrame.Angles(0, 0, math.rad(90)),
+	}):Play()
+	TweenService:Create(needle, approachInfo, {
+		CFrame = insertedPivot * CFrame.new(0, -2.4 * machineScale, 0),
+	}):Play()
+	task.wait(0.7)
+
+	-- Act 3: the injection drains the growth -- the fluid fills while
+	-- the needle is in, and the shrink lands mid-draw so the cause and
+	-- effect read clearly.
+	local drainSeconds = math.max(GameConfig.rebirth.cinematicSeconds - 1.5, 2)
+	TweenService:Create(fluid, TweenInfo.new(1.2, Enum.EasingStyle.Quad), {
+		Size = Vector3.new(2.4, 1.1, 1.1) * machineScale,
+	}):Play()
+	task.wait(0.4)
 	SizeService.forceShrink(player)
 
-	-- Act 3: coins spiral up out of the player into the funnel.
+	-- Act 4: coins spiral up out of the player into the funnel.
 	for orbIndex = 1, 8 do
 		task.delay(orbIndex * 0.12, function()
 			local orb = createPart({
 				Name = "CoinOrb",
 				Shape = Enum.PartType.Ball,
-				Size = Vector3.new(0.8, 0.8, 0.8),
-				CFrame = center * CFrame.new(0, 1, 0),
+				Size = Vector3.new(0.8, 0.8, 0.8) * machineScale,
+				CFrame = center * CFrame.new(0, machineScale, 0),
 				Color = COIN_GOLD,
 				Material = Enum.Material.Neon,
 				Parent = machine,
@@ -184,7 +233,7 @@ local function playCinematic(player: Player)
 			local rise = TweenService:Create(
 				orb,
 				TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-				{ CFrame = funnel.CFrame, Size = Vector3.new(0.2, 0.2, 0.2) }
+				{ CFrame = funnel.CFrame, Size = Vector3.new(0.2, 0.2, 0.2) * machineScale }
 			)
 			rise:Play()
 			rise.Completed:Connect(function()
@@ -193,11 +242,24 @@ local function playCinematic(player: Player)
 		end)
 	end
 
-	task.wait(GameConfig.rebirth.cinematicSeconds - 0.8)
+	task.wait(drainSeconds - 0.4)
+
+	-- The syringe pulls back out before the tube opens.
+	local retractInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	TweenService:Create(barrel, retractInfo, {
+		CFrame = retractedPivot * CFrame.Angles(0, 0, math.rad(90)),
+	}):Play()
+	TweenService:Create(fluid, retractInfo, {
+		CFrame = retractedPivot * CFrame.Angles(0, 0, math.rad(90)),
+	}):Play()
+	TweenService:Create(needle, retractInfo, {
+		CFrame = retractedPivot * CFrame.new(0, -2.4 * machineScale, 0),
+	}):Play()
+	task.wait(0.5)
 
 	-- Release: the tube lifts away and the machine breaks down.
 	TweenService:Create(tube, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {
-		CFrame = center * CFrame.new(0, 22, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		CFrame = center * CFrame.new(0, 22 * machineScale, 0) * CFrame.Angles(0, 0, math.rad(90)),
 		Transparency = 1,
 	}):Play()
 	task.wait(0.5)

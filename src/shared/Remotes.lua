@@ -10,6 +10,7 @@ local FOLDER_NAME = "Remotes"
 
 local REMOTE_CLASS_BY_NAME = {
 	AttemptRebirth = "RemoteFunction",
+	BuyPetSlot = "RemoteFunction",
 	BuyPotion = "RemoteFunction",
 	BuyUpgrade = "RemoteFunction",
 	ClaimGroupChest = "RemoteFunction",

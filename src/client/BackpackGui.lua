@@ -7,6 +7,7 @@
 ]]
 
 local HttpService = game:GetService("HttpService")
+local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
@@ -173,14 +174,143 @@ local function openRenamePrompt(page: ScrollingFrame, petIndex: number, currentN
 	end)
 end
 
+-- A grid card selling one more equipped-pet slot. Both purchasable
+-- slots share the shape; only the price line and the action differ.
+local function buildSlotCard(
+	page: ScrollingFrame,
+	layoutOrder: number,
+	accent: Color3,
+	priceText: string,
+	onActivated: () -> ()
+)
+	local card = UiBuilder.create("Frame", {
+		Name = "SlotCard" .. layoutOrder,
+		LayoutOrder = layoutOrder,
+		Size = UDim2.new(0, 150, 0, 196),
+		BackgroundColor3 = CARD_COLOR,
+		BackgroundTransparency = 0.1,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Parent = page,
+	})
+	UiBuilder.round(card, 12)
+	UiBuilder.stroke(card, accent, 2)
+
+	UiBuilder.create("TextLabel", {
+		Name = "SlotGlyph",
+		Position = UDim2.new(0, 8, 0, 14),
+		Size = UDim2.new(1, -16, 0, 64),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		Text = "+1",
+		TextColor3 = accent,
+		TextSize = 44,
+		Parent = card,
+	})
+
+	UiBuilder.create("TextLabel", {
+		Name = "SlotTitle",
+		Position = UDim2.new(0, 8, 0, 84),
+		Size = UDim2.new(1, -16, 0, 40),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Text = "EXTRA PET SLOT",
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextSize = 15,
+		TextWrapped = true,
+		Parent = card,
+	})
+
+	local buyButton = UiBuilder.create("TextButton", {
+		Name = "BuySlotButton",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -6),
+		Size = UDim2.new(1, -16, 0, 46),
+		BackgroundColor3 = accent,
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamBold,
+		Text = priceText,
+		TextColor3 = Color3.fromRGB(45, 52, 54),
+		TextSize = 14,
+		TextWrapped = true,
+		Parent = card,
+	}) :: TextButton
+	UiBuilder.round(buyButton, 8)
+	UiBuilder.hoverPop(buyButton)
+
+	buyButton.Activated:Connect(onActivated)
+end
+
+local function extraPetSlotPass(): { [string]: any }?
+	for _, pass in ipairs(GameConfig.passes) do
+		if pass.key == "ExtraPetSlot" then
+			return pass
+		end
+	end
+
+	return nil
+end
+
 local function fillPetsTab(page: ScrollingFrame)
 	local petsJson = localPlayer:GetAttribute("PetsJson")
 	local namesJson = localPlayer:GetAttribute("PetNamesJson")
-	local equippedIndex = localPlayer:GetAttribute("EquippedPetIndex")
+	local equippedJson = localPlayer:GetAttribute("EquippedPetsJson")
 	local petIds = if typeof(petsJson) == "string" then HttpService:JSONDecode(petsJson) else {}
 	local nicknames = if typeof(namesJson) == "string"
 		then HttpService:JSONDecode(namesJson)
 		else {}
+	local equippedSet: { number } = if typeof(equippedJson) == "string"
+		then HttpService:JSONDecode(equippedJson)
+		else {}
+
+	local petSlots = localPlayer:GetAttribute("PetSlots")
+	if typeof(petSlots) ~= "number" then
+		petSlots = GameConfig.petSlots.base
+	end
+
+	-- The coin slot has no attribute of its own; it is whatever slot
+	-- count remains after the base three and the game pass.
+	local ownsPassSlot = localPlayer:GetAttribute("OwnsExtraPetSlot") == true
+	local ownsCoinSlot = petSlots - GameConfig.petSlots.base - (if ownsPassSlot then 1 else 0) >= 1
+
+	-- The slot meter leads the grid, so capacity is visible before any
+	-- equip attempt bounces off it.
+	local meterCard = UiBuilder.create("Frame", {
+		Name = "SlotMeter",
+		LayoutOrder = -3000,
+		Size = UDim2.new(0, 150, 0, 196),
+		BackgroundColor3 = CARD_COLOR,
+		BackgroundTransparency = 0.1,
+		BorderSizePixel = 0,
+		Parent = page,
+	})
+	UiBuilder.round(meterCard, 12)
+	UiBuilder.stroke(meterCard, EQUIPPED_COLOR, 2)
+
+	UiBuilder.create("TextLabel", {
+		Name = "SlotMeterCount",
+		Position = UDim2.new(0, 8, 0, 24),
+		Size = UDim2.new(1, -16, 0, 60),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		Text = string.format("%d/%d", #equippedSet, petSlots),
+		TextColor3 = EQUIPPED_COLOR,
+		TextSize = 40,
+		Parent = meterCard,
+	})
+
+	UiBuilder.create("TextLabel", {
+		Name = "SlotMeterHint",
+		Position = UDim2.new(0, 8, 0, 92),
+		Size = UDim2.new(1, -16, 0, 80),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Text = "PET SLOTS IN USE\n\nEquip up to that many pets at once -- their growth bonuses stack!",
+		TextColor3 = Color3.fromRGB(178, 190, 195),
+		TextSize = 12,
+		TextWrapped = true,
+		Parent = meterCard,
+	})
 
 	if #petIds == 0 then
 		UiBuilder.create("TextLabel", {
@@ -205,7 +335,7 @@ local function fillPetsTab(page: ScrollingFrame)
 
 		-- Duplicates of one species are separate pets, so cards key off
 		-- the inventory index, and equip requests send that index.
-		local isEquipped = order == equippedIndex
+		local isEquipped = table.find(equippedSet, order) ~= nil
 		local rank = PetModels.tierRank(info.tierName)
 		local nickname = nicknames[tostring(order)]
 		local mutation = info.mutation
@@ -214,7 +344,7 @@ local function fillPetsTab(page: ScrollingFrame)
 		-- color; green when equipped) so the grid reads as one set.
 		local card = UiBuilder.create("Frame", {
 			Name = "Pet" .. order,
-			LayoutOrder = if isEquipped then 0 else order,
+			LayoutOrder = if isEquipped then order - 1000 else order,
 			Size = UDim2.new(0, 150, 0, 196),
 			BackgroundColor3 = CARD_COLOR,
 			BackgroundTransparency = 0.1,
@@ -350,14 +480,56 @@ local function fillPetsTab(page: ScrollingFrame)
 			task.spawn(function()
 				local equipPet = Remotes.get("EquipPet") :: RemoteFunction
 
-				-- InvokeServer throws if the server errors mid-call.
+				-- The server toggles: the same index equips or unequips
+				-- depending on its current state.
 				local invoked, _success, message = pcall(function()
-					return equipPet:InvokeServer(if isEquipped then 0 else order)
+					return equipPet:InvokeServer(order)
 				end)
 
 				Toast.show(if invoked then message else "Something went wrong -- try again.")
 			end)
 		end)
+	end
+
+	-- Purchasable slots trail the collection, each disappearing once
+	-- owned.
+	if not ownsCoinSlot then
+		buildSlotCard(
+			page,
+			9000,
+			Color3.fromRGB(253, 203, 110),
+			string.format("UNLOCK -- %d COINS", GameConfig.petSlots.coinSlotCost),
+			function()
+				task.spawn(function()
+					local buyPetSlot = Remotes.get("BuyPetSlot") :: RemoteFunction
+
+					-- InvokeServer throws if the server errors mid-call.
+					local invoked, _success, message = pcall(function()
+						return buyPetSlot:InvokeServer()
+					end)
+
+					Toast.show(if invoked then message else "Something went wrong -- try again.")
+				end)
+			end
+		)
+	end
+
+	if not ownsPassSlot then
+		local pass = extraPetSlotPass()
+		local passPrice = if pass ~= nil then pass.robuxPrice else 0
+		buildSlotCard(
+			page,
+			9001,
+			Color3.fromRGB(0, 162, 255),
+			string.format("GAME PASS -- R$ %d", passPrice),
+			function()
+				if pass ~= nil and pass.gamePassId ~= 0 then
+					MarketplaceService:PromptGamePassPurchase(localPlayer, pass.gamePassId)
+				else
+					Toast.show("The extra slot pass unlocks once the game is published!")
+				end
+			end
+		)
 	end
 end
 
@@ -549,6 +721,7 @@ function BackpackGui.start()
 		ScrollBarThickness = 6,
 		Parent = window,
 	}) :: ScrollingFrame
+	UiBuilder.bubbly(page)
 
 	UiBuilder.create("UIGridLayout", {
 		CellPadding = UDim2.new(0, 12, 0, 12),
@@ -645,7 +818,13 @@ function BackpackGui.start()
 
 	-- Live refresh while open, so hatching, naming, or equipping shows
 	-- instantly.
-	for _, attributeName in ipairs({ "PetsJson", "PetNamesJson", "EquippedPetIndex" }) do
+	for _, attributeName in ipairs({
+		"PetsJson",
+		"PetNamesJson",
+		"EquippedPetsJson",
+		"PetSlots",
+		"OwnsExtraPetSlot",
+	}) do
 		localPlayer:GetAttributeChangedSignal(attributeName):Connect(function()
 			if window.Visible then
 				refreshPage()

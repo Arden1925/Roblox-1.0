@@ -23,7 +23,11 @@ export type PlayerData = {
 	tutorialDone: boolean,
 	pets: { string },
 	petNames: { [string]: string },
+	-- Legacy single-pet field, still read so old saves keep their pet;
+	-- new saves write the equippedPets list.
 	equippedPet: string,
+	equippedPets: { string },
+	extraPetSlot: boolean,
 	upgrades: { [string]: number },
 	checkpointsClaimed: { [string]: number },
 	respawnWorld: number,
@@ -52,6 +56,8 @@ local function copyDefaultData(): PlayerData
 		pets = {},
 		petNames = {},
 		equippedPet = "",
+		equippedPets = {},
+		extraPetSlot = false,
 		upgrades = {},
 		checkpointsClaimed = {},
 		respawnWorld = 1,
@@ -93,7 +99,7 @@ local function sanitize(result: any): PlayerData
 		end
 	end
 
-	for _, booleanField in ipairs({ "tutorialDone", "groupChestClaimed" }) do
+	for _, booleanField in ipairs({ "tutorialDone", "groupChestClaimed", "extraPetSlot" }) do
 		if typeof(result[booleanField]) == "boolean" then
 			data[booleanField] = result[booleanField]
 		end
@@ -121,6 +127,20 @@ local function sanitize(result: any): PlayerData
 				table.insert(data.pets, petId)
 			end
 		end
+	end
+
+	if typeof(result.equippedPets) == "table" then
+		for _, petId in ipairs(result.equippedPets) do
+			if typeof(petId) == "string" then
+				table.insert(data.equippedPets, petId)
+			end
+		end
+	end
+
+	-- Old saves carry a single equipped pet; fold it into the list so
+	-- nobody loses their companion on the schema change.
+	if #data.equippedPets == 0 and data.equippedPet ~= "" then
+		table.insert(data.equippedPets, data.equippedPet)
 	end
 
 	-- Nicknames are keyed by the pet's inventory index as a string.

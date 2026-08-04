@@ -10,6 +10,7 @@ local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 local Client = script.Parent
 local Toast = require(Client.Toast)
@@ -24,6 +25,15 @@ local ROW_COLOR = Color3.fromRGB(44, 62, 52)
 local ACCENT_COLOR = Color3.fromRGB(255, 202, 58)
 local READY_COLOR = Color3.fromRGB(76, 209, 55)
 local LOCKED_COLOR = Color3.fromRGB(72, 84, 96)
+
+-- Streak chip states: claimed days go this green, today's claimable
+-- chip glows gold (ACCENT_COLOR), and still-locked days sit dark
+-- behind gray chains.
+local CLAIMED_COLOR = Color3.fromRGB(84, 178, 108)
+local CHAIN_COLOR = Color3.fromRGB(120, 128, 140)
+local CHAIN_DARK = Color3.fromRGB(62, 68, 80)
+
+local SECONDS_PER_DAY = 24 * 60 * 60
 
 -- The window is laid out as a running cursor -- quests, then the
 -- streak strip, then the claim button -- and sized to fit, so sections
@@ -40,6 +50,12 @@ local STREAK_BUTTON_HEIGHT = 42
 local BOTTOM_MARGIN = 14
 
 local localPlayer = Players.LocalPlayer
+
+-- Set when the countdown loop watches the server clock cross UTC
+-- midnight: the server's StreakClaimable attribute stays stale-false
+-- until the next claim or rejoin, so the client carries the truth
+-- itself until fresh attributes arrive.
+local sawMidnightRollover = false
 
 local QuestGui = {}
 
@@ -61,6 +77,96 @@ local PROTECTED_NAMES = {
 	CloseButton = true,
 	HeaderBanner = true,
 }
+
+-- Two crossed link bands and a little padlock: the universal "not yet"
+-- costume for a locked reward chip.
+local function addChains(dayBox: Frame)
+	for _, rotation in ipairs({ 35, -35 }) do
+		local band = UiBuilder.create("Frame", {
+			Name = "ChainBand",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0.5, 0, 0.5, 0),
+			Size = UDim2.new(1.35, 0, 0, 4),
+			Rotation = rotation,
+			BackgroundColor3 = CHAIN_COLOR,
+			BorderSizePixel = 0,
+			ZIndex = 3,
+			Parent = dayBox,
+		})
+		UiBuilder.round(band, 2)
+
+		-- Small dark notches make the band read as chain links rather
+		-- than a plain strap.
+		for linkIndex = 1, 3 do
+			UiBuilder.create("Frame", {
+				Name = "ChainLink",
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(linkIndex * 0.25, 0, 0.5, 0),
+				Size = UDim2.new(0, 3, 0, 2),
+				BackgroundColor3 = CHAIN_DARK,
+				BorderSizePixel = 0,
+				ZIndex = 4,
+				Parent = band,
+			})
+		end
+	end
+
+	local lock = UiBuilder.create("Frame", {
+		Name = "ChainLock",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 2),
+		Size = UDim2.new(0, 12, 0, 10),
+		BackgroundColor3 = CHAIN_DARK,
+		BorderSizePixel = 0,
+		ZIndex = 5,
+		Parent = dayBox,
+	})
+	UiBuilder.round(lock, 3)
+
+	local shackle = UiBuilder.create("Frame", {
+		Name = "ChainShackle",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 0, 1),
+		Size = UDim2.new(0, 8, 0, 5),
+		BackgroundColor3 = CHAIN_DARK,
+		BorderSizePixel = 0,
+		ZIndex = 4,
+		Parent = lock,
+	})
+	UiBuilder.round(shackle, 3)
+end
+
+-- The opposite of chains: a white check and a gold sparkle, worn by
+-- chips whose reward is already banked.
+local function addClaimedMark(dayBox: Frame)
+	UiBuilder.create("TextLabel", {
+		Name = "ClaimedCheck",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -1, 0, 1),
+		Size = UDim2.new(0, 14, 0, 14),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		Text = "\u{2713}",
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextSize = 13,
+		ZIndex = 3,
+		Parent = dayBox,
+	})
+
+	UiBuilder.create("TextLabel", {
+		Name = "ClaimedSparkle",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 1, 1, -1),
+		Size = UDim2.new(0, 12, 0, 12),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		Text = "\u{2726}",
+		TextColor3 = ACCENT_COLOR,
+		TextSize = 11,
+		ZIndex = 3,
+		Parent = dayBox,
+	})
+end
 
 local function rebuild(container: Frame)
 	for _, child in ipairs(container:GetChildren()) do
@@ -153,7 +259,7 @@ local function rebuild(container: Frame)
 	if typeof(streakCount) ~= "number" then
 		streakCount = 0
 	end
-	local claimable = localPlayer:GetAttribute("StreakClaimable") == true
+	local claimable = localPlayer:GetAttribute("StreakClaimable") == true or sawMidnightRollover
 
 	UiBuilder.create("TextLabel", {
 		Name = "StreakTitle",
@@ -172,36 +278,56 @@ local function rebuild(container: Frame)
 
 	-- The strip wraps every seven days; day 8 lights one box again. A
 	-- streak of zero must light nothing, and (0 - 1) % 7 is 6 in Luau,
-	-- so the zero case cannot share the modulo expression.
-	local reachedCount = if streakCount > 0 then (streakCount - 1) % 7 + 1 else 0
+	-- so the zero case cannot share the modulo expression. Claimed days
+	-- are green with a check, today's claimable chip glows gold, and
+	-- locked days sit dark behind chains.
+	local cycleClaimed = if streakCount > 0 then (streakCount - 1) % 7 + 1 else 0
+	local todayIndex = 0
+	if claimable then
+		-- A finished row rolls over: the next claim starts a fresh cycle.
+		if cycleClaimed >= 7 then
+			cycleClaimed = 0
+		end
+		todayIndex = cycleClaimed + 1
+	end
 
 	for dayIndex = 1, 7 do
-		local reached = dayIndex <= reachedCount
+		local claimed = dayIndex <= cycleClaimed
+		local isToday = dayIndex == todayIndex
+
 		local dayBox = UiBuilder.create("Frame", {
 			Name = "Day" .. dayIndex,
 			Position = UDim2.new(0, SIDE_MARGIN + (dayIndex - 1) * 52, 0, cursorY),
 			Size = UDim2.new(0, 46, 0, STREAK_BOX_HEIGHT),
-			BackgroundColor3 = if reached then ACCENT_COLOR else ROW_COLOR,
+			BackgroundColor3 = if claimed
+				then CLAIMED_COLOR
+				elseif isToday then ACCENT_COLOR
+				else ROW_COLOR,
 			BorderSizePixel = 0,
 			Parent = container,
 		})
 		UiBuilder.round(dayBox, 8)
 
-		local dayLabel = UiBuilder.create("TextLabel", {
+		UiBuilder.create("TextLabel", {
 			Size = UDim2.new(1, 0, 1, 0),
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBold,
 			Text = string.format("%d\n$%d", dayIndex, GameConfig.streakRewards[dayIndex].coins),
-			TextColor3 = if reached
-				then Color3.fromRGB(26, 38, 32)
-				else Color3.fromRGB(255, 255, 255),
+			TextColor3 = if claimed or isToday
+				then Color3.fromRGB(255, 255, 255)
+				else Color3.fromRGB(178, 190, 195),
 			TextSize = 12,
+			Parent = dayBox,
 		})
 
-		-- Dark-on-gold is the reached look; opt out of the cartoonify
-		-- recolor, which fires when the label is parented.
-		dayLabel:SetAttribute("KeepTextColor", true)
-		dayLabel.Parent = dayBox
+		if claimed then
+			addClaimedMark(dayBox)
+		elseif isToday then
+			local stroke = UiBuilder.stroke(dayBox, Color3.fromRGB(255, 255, 255), 2)
+			UiBuilder.pulse(stroke)
+		else
+			addChains(dayBox)
+		end
 	end
 
 	cursorY += STREAK_BOX_HEIGHT + SECTION_SPACING
@@ -214,7 +340,7 @@ local function rebuild(container: Frame)
 		BackgroundColor3 = if claimable then READY_COLOR else LOCKED_COLOR,
 		BorderSizePixel = 0,
 		Font = Enum.Font.GothamBlack,
-		Text = if claimable then "CLAIM TODAY'S REWARD" else "COME BACK TOMORROW",
+		Text = if claimable then "CLAIM TODAY'S REWARD" else "",
 		TextColor3 = Color3.fromRGB(255, 255, 255),
 		TextSize = 16,
 		Parent = container,
@@ -222,9 +348,39 @@ local function rebuild(container: Frame)
 	UiBuilder.round(streakButton, 10)
 	UiBuilder.hoverPop(streakButton)
 
-	streakButton.Activated:Connect(function()
-		invokeAndToast("ClaimStreak", nil)
-	end)
+	if claimable then
+		streakButton.Activated:Connect(function()
+			invokeAndToast("ClaimStreak", nil)
+		end)
+	else
+		-- Already claimed: the button becomes a live countdown to the
+		-- next reward. The server's day boundary is UTC, so the time
+		-- left falls straight out of the server clock. The server only
+		-- republishes StreakClaimable on claims and joins, so when the
+		-- clock crosses midnight this loop rebuilds the window itself
+		-- to flip into the claimable state. The loop dies with the
+		-- button on the next rebuild.
+		local builtDay = math.floor(Workspace:GetServerTimeNow() / SECONDS_PER_DAY)
+		task.spawn(function()
+			while streakButton.Parent ~= nil do
+				local serverNow = math.floor(Workspace:GetServerTimeNow())
+				if math.floor(serverNow / SECONDS_PER_DAY) > builtDay then
+					sawMidnightRollover = true
+					rebuild(container)
+					break
+				end
+
+				local secondsLeft = SECONDS_PER_DAY - serverNow % SECONDS_PER_DAY
+				streakButton.Text = string.format(
+					"NEXT REWARD IN %02d:%02d:%02d",
+					math.floor(secondsLeft / 3600),
+					math.floor(secondsLeft / 60) % 60,
+					secondsLeft % 60
+				)
+				task.wait(1)
+			end
+		end)
+	end
 
 	cursorY += STREAK_BUTTON_HEIGHT + BOTTOM_MARGIN
 	container.Size = UDim2.new(0, WINDOW_WIDTH, 0, cursorY)
@@ -351,8 +507,16 @@ function QuestGui.start()
 		end
 	end
 
-	for _, attributeName in ipairs({ "QuestsJson", "StreakCount", "StreakClaimable" }) do
-		localPlayer:GetAttributeChangedSignal(attributeName):Connect(rebuildIfVisible)
+	localPlayer:GetAttributeChangedSignal("QuestsJson"):Connect(rebuildIfVisible)
+
+	-- Fresh streak attributes from the server supersede the client's
+	-- midnight-rollover guess -- but only streak changes may clear it,
+	-- or routine quest progress would revert an unlocked claim.
+	for _, attributeName in ipairs({ "StreakCount", "StreakClaimable" }) do
+		localPlayer:GetAttributeChangedSignal(attributeName):Connect(function()
+			sawMidnightRollover = false
+			rebuildIfVisible()
+		end)
 	end
 
 	-- Group chest prompts: claim through the server and toast the reply.

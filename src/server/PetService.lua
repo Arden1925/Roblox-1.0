@@ -1,14 +1,21 @@
 --[[
 	Pet inventories, egg hatching, mutations, nicknames, equipping, and
-	the floating follower you see beside each owner. The equipped pet's
-	growth bonus is published as the PetGrowthBonus attribute so
+	the floating followers you see beside each owner. Up to slotCount
+	pets ride along at once (three for everyone, plus a coin-bought
+	fourth slot and the ExtraPetSlot game pass); the equipped pets'
+	summed growth bonus is published as the PetGrowthBonus attribute so
 	SizeService reads it without depending on this module; the full
-	inventory and nickname map are published as JSON attributes for the
-	backpack UI.
+	inventory, nickname map, and equipped index list are published as
+	JSON attributes for the backpack UI.
 
 	Pets are identified to clients by their inventory index, not their
 	id: duplicates of the same pet are separate creatures that can carry
 	different nicknames.
+
+	Followers scale with their owner: the character's scale (derived
+	from the CurrentSize attribute) multiplies each pet's build-time
+	scale, so a giant walks with giant pets at matching spacing instead
+	of tiny ones drifting ever further away as the anchor offsets scale.
 ]]
 
 local HttpService = game:GetService("HttpService")
@@ -25,27 +32,75 @@ local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
 local PetCatalog = require(Shared.PetCatalog)
 local PetModels = require(Shared.PetModels)
+local SizeFormula = require(Shared.SizeFormula)
 
-local FOLLOW_OFFSET = Vector3.new(3.5, 2, 2)
+-- One anchor spot per equipped slot, in HRP-local studs: right, left,
+-- behind, then the two wide flanks for the purchasable slots. Humanoid
+-- scaling scales attachment offsets, which is exactly right once the
+-- pets themselves scale to match.
+local FOLLOW_OFFSETS = {
+	Vector3.new(3.5, 2, 2),
+	Vector3.new(-3.5, 2, 2),
+	Vector3.new(0, 2, 4.5),
+	Vector3.new(6, 2.5, 4),
+	Vector3.new(-6, 2.5, 4),
+}
+
+local NAME_TAG_OFFSET_Y = 2.4
+local RESCALE_EPSILON = 0.01
+local HATCH_COOLDOWN_SECONDS = 1.5
 
 local NICKNAME_MINIMUM_LENGTH = 2
 local NICKNAME_MAXIMUM_LENGTH = 20
 
+type FollowerRecord = {
+	model: Model,
+	baseScale: number,
+	billboard: BillboardGui,
+	anchorName: string,
+	appliedScale: number,
+}
+
 local petsByPlayer: { [Player]: { string } } = {}
 local nicknamesByPlayer: { [Player]: { [string]: string } } = {}
-local equippedIndexByPlayer: { [Player]: number } = {}
-local followerByPlayer: { [Player]: Model } = {}
+local equippedIndicesByPlayer: { [Player]: { number } } = {}
+local followersByPlayer: { [Player]: { [number]: FollowerRecord } } = {}
+local extraSlotByPlayer: { [Player]: boolean } = {}
+local lastHatchAtByPlayer: { [Player]: number } = {}
 
 local PetService = {}
 
-local function equippedId(player: Player): string?
-	local pets = petsByPlayer[player]
-	local index = equippedIndexByPlayer[player]
-	if pets == nil or index == nil then
-		return nil
+local function slotCount(player: Player): number
+	local count = GameConfig.petSlots.base
+	if extraSlotByPlayer[player] then
+		count += 1
+	end
+	if player:GetAttribute("OwnsExtraPetSlot") == true then
+		count += 1
 	end
 
-	return pets[index]
+	return count
+end
+
+local function equippedIndices(player: Player): { number }
+	local indices = equippedIndicesByPlayer[player]
+	if indices == nil then
+		indices = {}
+		equippedIndicesByPlayer[player] = indices
+	end
+
+	return indices
+end
+
+-- The character scale the owner is currently rendered at, floored so
+-- shrunk players keep readable (not microscopic) pets.
+local function characterScaleFor(player: Player): number
+	local currentSize = player:GetAttribute("CurrentSize")
+	if typeof(currentSize) ~= "number" then
+		return 1
+	end
+
+	return math.max(SizeFormula.scaleForSize(currentSize), 0.75)
 end
 
 local function nicknameFor(player: Player, petIndex: number): string?
@@ -55,19 +110,54 @@ local function nicknameFor(player: Player, petIndex: number): string?
 end
 
 local function publishInventory(player: Player)
-	player:SetAttribute("PetsJson", HttpService:JSONEncode(petsByPlayer[player] or {}))
-	player:SetAttribute("PetNamesJson", HttpService:JSONEncode(nicknamesByPlayer[player] or {}))
-	player:SetAttribute("EquippedPetIndex", equippedIndexByPlayer[player] or 0)
+	local pets = petsByPlayer[player] or {}
+	local indices = equippedIndices(player)
 
-	local info = PetCatalog.infoFor(equippedId(player) or "")
-	player:SetAttribute("PetGrowthBonus", if info ~= nil then info.bonus else 0)
+	player:SetAttribute("PetsJson", HttpService:JSONEncode(pets))
+	player:SetAttribute("PetNamesJson", HttpService:JSONEncode(nicknamesByPlayer[player] or {}))
+	player:SetAttribute("EquippedPetsJson", HttpService:JSONEncode(indices))
+	player:SetAttribute("PetSlots", slotCount(player))
+
+	local totalBonus = 0
+	for _, index in ipairs(indices) do
+		local info = PetCatalog.infoFor(pets[index] or "")
+		if info ~= nil then
+			totalBonus += info.bonus
+		end
+	end
+	player:SetAttribute("PetGrowthBonus", totalBonus)
 end
 
-local function destroyFollower(player: Player)
-	local follower = followerByPlayer[player]
-	if follower ~= nil then
-		follower:Destroy()
-		followerByPlayer[player] = nil
+local function destroyFollower(player: Player, petIndex: number)
+	local followers = followersByPlayer[player]
+	local record = if followers ~= nil then followers[petIndex] else nil
+	if record == nil then
+		return
+	end
+
+	record.model:Destroy()
+	followers[petIndex] = nil
+
+	-- The anchor attachment lives on the character, not the follower,
+	-- so it must be cleaned up separately.
+	local character = player.Character
+	local rootPart = if character ~= nil then character:FindFirstChild("HumanoidRootPart") else nil
+	if rootPart ~= nil then
+		local anchor = rootPart:FindFirstChild(record.anchorName)
+		if anchor ~= nil then
+			anchor:Destroy()
+		end
+	end
+end
+
+local function destroyAllFollowers(player: Player)
+	local followers = followersByPlayer[player]
+	if followers == nil then
+		return
+	end
+
+	for petIndex in pairs(followers) do
+		destroyFollower(player, petIndex)
 	end
 end
 
@@ -76,7 +166,11 @@ end
 	species and tier below, and -- when the pet is mutated -- a third
 	line in the mutation's color, matching the backpack card layout.
 ]]
-local function buildNameTag(parent: BasePart, info: PetCatalog.PetInfo, nickname: string?)
+local function buildNameTag(
+	parent: BasePart,
+	info: PetCatalog.PetInfo,
+	nickname: string?
+): BillboardGui
 	local mutation = info.mutation
 	local lineCount = if mutation ~= nil then 3 else 2
 
@@ -112,21 +206,26 @@ local function buildNameTag(parent: BasePart, info: PetCatalog.PetInfo, nickname
 	if mutation ~= nil then
 		addLine(3, "\u{2726} " .. string.upper(mutation.name) .. " \u{2726}", mutation.color, 12)
 	end
+
+	return billboard
 end
 
 --[[
-	Spawns the pet's real model beside its owner: every part welded to
-	the primary part, unanchored and massless, with the body steered by
-	physics constraints so the pet trails naturally as the player moves.
+	Spawns one equipped pet's real model beside its owner: every part
+	welded to the primary part, unanchored and massless, with the body
+	steered by physics constraints so the pet trails naturally as the
+	player moves. slotNumber picks the anchor spot, so multiple pets
+	fan out around the character instead of stacking.
 ]]
-local function createFollower(player: Player, petIndex: number)
-	destroyFollower(player)
+local function createFollower(player: Player, petIndex: number, slotNumber: number)
+	destroyFollower(player, petIndex)
 
+	local offset = FOLLOW_OFFSETS[slotNumber]
 	local pets = petsByPlayer[player]
 	local petId = if pets ~= nil then pets[petIndex] else nil
 	local info = PetCatalog.infoFor(petId or "")
 	local character = player.Character
-	if petId == nil or info == nil or character == nil then
+	if offset == nil or petId == nil or info == nil or character == nil then
 		return
 	end
 
@@ -141,8 +240,14 @@ local function createFollower(player: Player, petIndex: number)
 		return
 	end
 
+	-- Scale the pet to its owner before anything is welded or aligned,
+	-- so a giant's pets are giant from the first frame.
+	local baseScale = model:GetScale()
+	local characterScale = characterScaleFor(player)
+	model:ScaleTo(baseScale * characterScale)
+
 	model.Name = "PetFollower"
-	model:PivotTo(rootPart.CFrame * CFrame.new(FOLLOW_OFFSET))
+	model:PivotTo(rootPart.CFrame * CFrame.new(offset))
 
 	for _, part in ipairs(model:GetDescendants()) do
 		if part:IsA("BasePart") then
@@ -161,9 +266,10 @@ local function createFollower(player: Player, petIndex: number)
 	local attachment = Instance.new("Attachment")
 	attachment.Parent = body
 
+	local anchorName = "PetAnchor" .. slotNumber
 	local characterAttachment = Instance.new("Attachment")
-	characterAttachment.Name = "PetAnchor"
-	characterAttachment.Position = FOLLOW_OFFSET
+	characterAttachment.Name = anchorName
+	characterAttachment.Position = offset
 	characterAttachment.Parent = rootPart
 
 	local alignPosition = Instance.new("AlignPosition")
@@ -180,10 +286,52 @@ local function createFollower(player: Player, petIndex: number)
 	alignOrientation.Responsiveness = 12
 	alignOrientation.Parent = body
 
-	buildNameTag(body, info, nicknameFor(player, petIndex))
+	local billboard = buildNameTag(body, info, nicknameFor(player, petIndex))
+	billboard.StudsOffset = Vector3.new(0, NAME_TAG_OFFSET_Y * characterScale, 0)
 
 	model.Parent = character
-	followerByPlayer[player] = model
+
+	local followers = followersByPlayer[player]
+	if followers == nil then
+		followers = {}
+		followersByPlayer[player] = followers
+	end
+	followers[petIndex] = {
+		model = model,
+		baseScale = baseScale,
+		billboard = billboard,
+		anchorName = anchorName,
+		appliedScale = characterScale,
+	}
+end
+
+-- Tears down and respawns every equipped follower in slot order --
+-- the one honest way to keep slots, offsets, and models in sync after
+-- any change to the equipped list.
+local function rebuildFollowers(player: Player)
+	destroyAllFollowers(player)
+
+	for slotNumber, petIndex in ipairs(equippedIndices(player)) do
+		createFollower(player, petIndex, slotNumber)
+	end
+end
+
+-- Follows the owner's size: rescales live followers when the
+-- character's scale has moved enough to notice.
+local function rescaleFollowers(player: Player)
+	local followers = followersByPlayer[player]
+	if followers == nil then
+		return
+	end
+
+	local characterScale = characterScaleFor(player)
+	for _, record in pairs(followers) do
+		if math.abs(characterScale - record.appliedScale) > RESCALE_EPSILON then
+			record.model:ScaleTo(record.baseScale * characterScale)
+			record.billboard.StudsOffset = Vector3.new(0, NAME_TAG_OFFSET_Y * characterScale, 0)
+			record.appliedScale = characterScale
+		end
+	end
 end
 
 -- Returns the granted pet's inventory index, or nil if the id is bogus.
@@ -201,6 +349,16 @@ end
 
 -- Wired as HatchEgg.OnServerInvoke; hatches the CURRENT world's coin egg.
 function PetService.hatchEgg(player: Player): (boolean, any)
+	-- One egg at a time: the client locks the UI during the reveal,
+	-- and this cooldown backs it up against autoclickers and exploits.
+	-- Only a hatch that actually happens arms it, so a player short on
+	-- coins keeps getting the honest cost message.
+	local now = os.clock()
+	local lastHatchAt = lastHatchAtByPlayer[player]
+	if lastHatchAt ~= nil and now - lastHatchAt < HATCH_COOLDOWN_SECONDS then
+		return false, "One egg at a time!"
+	end
+
 	local worldIndex = player:GetAttribute("CurrentWorld")
 	if typeof(worldIndex) ~= "number" or GameConfig.worlds[worldIndex] == nil then
 		return false, "Try again in a moment."
@@ -249,6 +407,7 @@ function PetService.hatchEgg(player: Player): (boolean, any)
 		hatchedId = PetCatalog.mutatedId(hatchedId, mutationKey)
 	end
 
+	lastHatchAtByPlayer[player] = now
 	EconomyService.spendForEgg(player, world.eggCost)
 	local petIndex = PetService.grantPet(player, hatchedId)
 	QuestService.increment(player, "eggsHatched")
@@ -256,14 +415,18 @@ function PetService.hatchEgg(player: Player): (boolean, any)
 	return true, { petId = hatchedId, petIndex = petIndex }
 end
 
--- Wired as EquipPet.OnServerInvoke; equips by inventory index, 0 unequips.
+--[[
+	Wired as EquipPet.OnServerInvoke. Toggles by inventory index: an
+	equipped pet unequips, an unequipped one takes the next free slot
+	(if any). 0 clears every slot at once.
+]]
 function PetService.equipPet(player: Player, petIndex: any): (boolean, string)
 	if petIndex == 0 or petIndex == "" then
-		equippedIndexByPlayer[player] = nil
-		destroyFollower(player)
+		equippedIndicesByPlayer[player] = {}
+		destroyAllFollowers(player)
 		publishInventory(player)
 
-		return true, "Pet unequipped."
+		return true, "All pets unequipped."
 	end
 
 	local pets = petsByPlayer[player]
@@ -277,13 +440,47 @@ function PetService.equipPet(player: Player, petIndex: any): (boolean, string)
 		return false, "You do not own that pet."
 	end
 
-	equippedIndexByPlayer[player] = petIndex
-	createFollower(player, petIndex)
+	local indices = equippedIndices(player)
+	local alreadyAt = table.find(indices, petIndex)
+	if alreadyAt ~= nil then
+		table.remove(indices, alreadyAt)
+		rebuildFollowers(player)
+		publishInventory(player)
+
+		local shownName = nicknameFor(player, petIndex) or info.name
+
+		return true, string.format("%s unequipped.", shownName)
+	end
+
+	local capacity = slotCount(player)
+	if #indices >= capacity then
+		return false, string.format("All %d pet slots are full -- unequip one first!", capacity)
+	end
+
+	table.insert(indices, petIndex)
+	rebuildFollowers(player)
 	publishInventory(player)
 
 	local shownName = nicknameFor(player, petIndex) or info.name
 
 	return true, string.format("%s equipped: +%d%% growth!", shownName, info.bonus * 100)
+end
+
+-- Wired as BuyPetSlot.OnServerInvoke: the coin-bought fourth slot.
+function PetService.buyPetSlot(player: Player): (boolean, string)
+	if extraSlotByPlayer[player] then
+		return false, "You already own the coin pet slot!"
+	end
+
+	local cost = GameConfig.petSlots.coinSlotCost
+	if not EconomyService.spendCoins(player, cost) then
+		return false, string.format("The extra pet slot costs %d coins.", cost)
+	end
+
+	extraSlotByPlayer[player] = true
+	publishInventory(player)
+
+	return true, string.format("Pet slot unlocked -- you can now equip %d!", slotCount(player))
 end
 
 --[[
@@ -343,8 +540,9 @@ function PetService.renamePet(player: Player, petIndex: any, requestedName: any)
 	publishInventory(player)
 
 	-- A renamed equipped pet gets its name tag rebuilt immediately.
-	if equippedIndexByPlayer[player] == petIndex then
-		createFollower(player, petIndex)
+	local slotNumber = table.find(equippedIndices(player), petIndex)
+	if slotNumber ~= nil then
+		createFollower(player, petIndex, slotNumber)
 	end
 
 	return true, string.format("Named your pet %s!", trimmed)
@@ -363,44 +561,81 @@ function PetService.initializePlayer(
 	player: Player,
 	pets: { string },
 	petNames: { [string]: string },
-	equippedPet: string
+	equippedPets: { string },
+	extraSlotBought: boolean
 )
 	petsByPlayer[player] = pets
 	nicknamesByPlayer[player] = petNames
+	extraSlotByPlayer[player] = extraSlotBought
 
-	-- Saves store the equipped pet as an id; the first owned copy wins.
-	if equippedPet ~= "" then
-		local savedIndex = table.find(pets, equippedPet)
-		if savedIndex ~= nil then
-			equippedIndexByPlayer[player] = savedIndex
+	-- Saves store equipped pets as ids; each id claims its first
+	-- still-unclaimed copy, so duplicate species resolve to distinct
+	-- inventory indices. Anything past the slot cap is dropped.
+	local indices = equippedIndices(player)
+	local claimed: { [number]: boolean } = {}
+	for _, savedId in ipairs(equippedPets) do
+		if #indices >= slotCount(player) then
+			break
+		end
+
+		for index, ownedId in ipairs(pets) do
+			if ownedId == savedId and not claimed[index] then
+				claimed[index] = true
+				table.insert(indices, index)
+				break
+			end
 		end
 	end
 
 	publishInventory(player)
 
 	player.CharacterAdded:Connect(function()
-		local equipped = equippedIndexByPlayer[player]
-		if equipped ~= nil then
-			-- Wait for the rig so the follower has a root to align to.
-			task.delay(1, createFollower, player, equipped)
-		end
+		-- Wait for the rig so the followers have a root to align to.
+		task.delay(1, rebuildFollowers, player)
 	end)
 
-	local equipped = equippedIndexByPlayer[player]
-	if equipped ~= nil and player.Character ~= nil then
-		createFollower(player, equipped)
+	if player.Character ~= nil then
+		rebuildFollowers(player)
 	end
+
+	-- Followers grow and shrink with their owner.
+	player:GetAttributeChangedSignal("CurrentSize"):Connect(function()
+		rescaleFollowers(player)
+	end)
+
+	-- Buying the ExtraPetSlot pass mid-session bumps the published
+	-- slot count immediately.
+	player:GetAttributeChangedSignal("OwnsExtraPetSlot"):Connect(function()
+		publishInventory(player)
+	end)
 end
 
-function PetService.snapshot(player: Player): ({ string }?, string?, { [string]: string }?)
-	return petsByPlayer[player], equippedId(player) or "", nicknamesByPlayer[player]
+function PetService.snapshot(
+	player: Player
+): ({ string }?, { string }?, { [string]: string }?, boolean)
+	local pets = petsByPlayer[player]
+	if pets == nil then
+		return nil, nil, nil, false
+	end
+
+	local equippedIds = {}
+	for _, index in ipairs(equippedIndices(player)) do
+		local petId = pets[index]
+		if petId ~= nil then
+			table.insert(equippedIds, petId)
+		end
+	end
+
+	return pets, equippedIds, nicknamesByPlayer[player], extraSlotByPlayer[player] == true
 end
 
 function PetService.removePlayer(player: Player)
 	petsByPlayer[player] = nil
 	nicknamesByPlayer[player] = nil
-	equippedIndexByPlayer[player] = nil
-	followerByPlayer[player] = nil
+	equippedIndicesByPlayer[player] = nil
+	followersByPlayer[player] = nil
+	extraSlotByPlayer[player] = nil
+	lastHatchAtByPlayer[player] = nil
 end
 
 return PetService

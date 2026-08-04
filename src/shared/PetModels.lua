@@ -249,6 +249,14 @@ function PetModels.build(petId: string): Model?
 	local boxCFrame = model:GetBoundingBox()
 	model:PivotTo(model:GetPivot() - boxCFrame.Position)
 
+	-- The pack authors left pivots wherever the asset happened to sit,
+	-- so the pivot can be far from the geometry. Anything that later
+	-- calls PivotTo (the viewport spinner, the follower placement)
+	-- positions the PIVOT, which would fling an off-pivot pet away
+	-- from where it was aimed -- the invisible-pet bug. Pin the pivot
+	-- to the centered geometry.
+	model.WorldPivot = CFrame.new()
+
 	-- Pick the anchor part before any aura shell exists, so the follower
 	-- aligns to the animal's body rather than the effect shell.
 	model.PrimaryPart = largestPart(model)

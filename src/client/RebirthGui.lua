@@ -23,6 +23,12 @@ local ACCENT_COLOR = Color3.fromRGB(190, 120, 255)
 local READY_COLOR = Color3.fromRGB(76, 209, 55)
 local LOCKED_COLOR = Color3.fromRGB(72, 84, 96)
 
+-- Column layout for the NOW vs AFTER table. The third column must start
+-- at 0.7 (not 0.8) so its 0.3 width ends exactly at the row's edge --
+-- starting it any later pushes the AFTER values outside the box.
+local COLUMN_POSITIONS = { 0, 0.4, 0.7 }
+local COLUMN_WIDTHS = { 0.4, 0.3, 0.3 }
+
 local localPlayer = Players.LocalPlayer
 
 local RebirthGui = {}
@@ -120,8 +126,8 @@ local function rebuild(container: Frame)
 
 	for columnIndex, headerText in ipairs({ "PERK", "NOW", "AFTER" }) do
 		UiBuilder.create("TextLabel", {
-			Position = UDim2.new((columnIndex - 1) * 0.4, 0, 0, 0),
-			Size = UDim2.new(if columnIndex == 1 then 0.4 else 0.3, 0, 1, 0),
+			Position = UDim2.new(COLUMN_POSITIONS[columnIndex], 0, 0, 0),
+			Size = UDim2.new(COLUMN_WIDTHS[columnIndex], 0, 1, 0),
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBlack,
 			Text = headerText,
@@ -148,12 +154,12 @@ local function rebuild(container: Frame)
 		for columnIndex, cellText in ipairs(row) do
 			UiBuilder.create("TextLabel", {
 				Position = UDim2.new(
-					(columnIndex - 1) * 0.4,
+					COLUMN_POSITIONS[columnIndex],
 					if columnIndex == 1 then 10 else 0,
 					0,
 					0
 				),
-				Size = UDim2.new(if columnIndex == 1 then 0.4 else 0.3, 0, 1, 0),
+				Size = UDim2.new(COLUMN_WIDTHS[columnIndex], 0, 1, 0),
 				BackgroundTransparency = 1,
 				Font = Enum.Font.GothamBold,
 				Text = cellText,

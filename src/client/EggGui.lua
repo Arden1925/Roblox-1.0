@@ -42,7 +42,46 @@ local CONFETTI_COLORS = {
 
 local localPlayer = Players.LocalPlayer
 
+-- One egg at a time: while a reveal is playing, hatch clicks and the
+-- egg stand prompt are both ignored, so cinematics can never stack.
+local revealActive = false
+
+-- ScreenGuis this module switched off for the reveal, so it restores
+-- exactly what it hid and nothing else.
+local hiddenGuis: { ScreenGui } = {}
+
 local EggGui = {}
+
+--[[
+	The reveal is a fullscreen moment; the rest of the HUD (size meter,
+	sliders, backpack button, quest board) only clutters it and clashes
+	with the overlay. Everything except this gui and toasts switches
+	off for the duration and comes back exactly as it was.
+]]
+local function setHudHidden(ownGui: ScreenGui, hidden: boolean)
+	if hidden then
+		local playerGui = ownGui.Parent
+		if playerGui == nil then
+			return
+		end
+
+		for _, child in ipairs(playerGui:GetChildren()) do
+			local shouldHide = child:IsA("ScreenGui")
+				and child ~= ownGui
+				and child.Name ~= "ToastGui"
+				and child.Enabled
+			if shouldHide then
+				child.Enabled = false
+				table.insert(hiddenGuis, child)
+			end
+		end
+	else
+		for _, gui in ipairs(hiddenGuis) do
+			gui.Enabled = true
+		end
+		table.clear(hiddenGuis)
+	end
+end
 
 local function buildPetRow(parent: Instance, order: number, info: PetCatalog.PetInfo, odds: string)
 	local row = UiBuilder.create("Frame", {
@@ -214,8 +253,15 @@ end
 local function playReveal(screenGui: ScreenGui, window: Frame, petId: string, petIndex: number)
 	local info = PetCatalog.infoFor(petId)
 	if info == nil then
+		-- Defensive: the server only sends catalog ids, but if one ever
+		-- fails to resolve, the lock must not stay latched forever.
+		revealActive = false
+		UiBuilder.popOpen(window)
+
 		return
 	end
+
+	setHudHidden(screenGui, true)
 
 	local overlay = UiBuilder.create("Frame", {
 		Name = "RevealOverlay",
@@ -388,6 +434,8 @@ local function playReveal(screenGui: ScreenGui, window: Frame, petId: string, pe
 	UiBuilder.hoverPop(continueButton)
 
 	continueButton.Activated:Connect(function()
+		setHudHidden(screenGui, false)
+		revealActive = false
 		overlay:Destroy()
 		UiBuilder.popOpen(window)
 	end)
@@ -433,8 +481,17 @@ local function buildWindow(parent: Instance): Frame
 end
 
 local function openForWorld(window: Frame, worldIndex: number)
+	-- The egg stand prompt stays live during a reveal; reopening the
+	-- odds menu would pop it straight over the cinematic.
+	if revealActive then
+		return
+	end
+
+	-- Buttons are GuiObjects too: the old Frame/TextLabel check let the
+	-- hatch and Robux buttons duplicate on every reopen, stacking dead
+	-- copies (and their connections) on top of each other.
 	for _, child in ipairs(window:GetChildren()) do
-		local clearable = child:IsA("Frame") or child:IsA("TextLabel")
+		local clearable = child:IsA("GuiObject")
 		if clearable and child.Name ~= "CloseButton" and child.Name ~= "HeaderBanner" then
 			child:Destroy()
 		end
@@ -495,6 +552,14 @@ local function openForWorld(window: Frame, worldIndex: number)
 	UiBuilder.hoverPop(hatchButton)
 
 	hatchButton.Activated:Connect(function()
+		-- Take the reveal lock at the click, not at the reveal: the
+		-- server round trip leaves a gap a double-click would slip
+		-- through otherwise.
+		if revealActive then
+			return
+		end
+		revealActive = true
+
 		-- The odds menu disappears the moment the hatch starts; the
 		-- reveal plays fullscreen and brings the menu back afterward.
 		window.Visible = false
@@ -512,6 +577,7 @@ local function openForWorld(window: Frame, worldIndex: number)
 				local screenGui = window.Parent :: ScreenGui
 				playReveal(screenGui, window, result.petId, result.petIndex)
 			else
+				revealActive = false
 				UiBuilder.popOpen(window)
 				Toast.show(
 					if invoked and not success then result else "Something went wrong -- try again."

@@ -73,8 +73,15 @@ function PetViewport.create(
 		Parent = parent,
 	}) :: ViewportFrame
 
+	-- Frame the camera from the model's real bounds: mutated pets are
+	-- taller and wear an aura shell, so a fixed distance either crops
+	-- them or leaves small pets tiny in the corner of the frame.
+	local _, boxSize = model:GetBoundingBox()
+	local radius = math.max(boxSize.X, boxSize.Y, boxSize.Z)
+	local distance = radius * 1.4 + 0.6
+
 	local camera = Instance.new("Camera")
-	camera.CFrame = CFrame.new(Vector3.new(0, 0.6, -3.4), Vector3.new(0, 0.3, 0))
+	camera.CFrame = CFrame.new(Vector3.new(0, boxSize.Y * 0.18, -distance), Vector3.new(0, 0, 0))
 	camera.Parent = viewport
 	viewport.CurrentCamera = camera
 

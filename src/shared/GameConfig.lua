@@ -456,6 +456,21 @@ local GameConfig = {
 			robuxPrice = 999,
 			gamePassId = 0,
 		},
+		{
+			key = "ExtraPetSlot",
+			name = "Extra Pet Slot",
+			description = "One more equipped pet by your side, forever.",
+			robuxPrice = 149,
+			gamePassId = 0,
+		},
+	},
+
+	-- Equipped pet capacity: everyone walks with three, a coin sink
+	-- unlocks a fourth, and the ExtraPetSlot pass stacks one more on
+	-- top of whatever is owned.
+	petSlots = {
+		base = 3,
+		coinSlotCost = 7500,
 	},
 
 	-- Rarity tiers shared by all pets, weakest first. Each world's coin

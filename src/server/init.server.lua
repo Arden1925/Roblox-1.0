@@ -38,7 +38,7 @@ local function snapshotPlayer(player: Player): DataService.PlayerData?
 	local sizeSnapshot = SizeService.snapshot(player)
 	local reachedWorld = WorldService.reachedWorld(player)
 	local coins, upgrades = EconomyService.snapshot(player)
-	local pets, equippedPet, petNames = PetService.snapshot(player)
+	local pets, equippedPets, petNames, extraPetSlot = PetService.snapshot(player)
 	local checkpointsClaimed, respawnWorld, respawnIndex = CheckpointService.snapshot(player)
 	local questDate, quests, streakCount, streakLastDate, groupChestClaimed =
 		QuestService.snapshot(player)
@@ -57,7 +57,11 @@ local function snapshotPlayer(player: Player): DataService.PlayerData?
 		tutorialDone = player:GetAttribute("TutorialDone") == true,
 		pets = pets,
 		petNames = petNames or {},
-		equippedPet = equippedPet or "",
+		equippedPet = if equippedPets ~= nil and equippedPets[1] ~= nil
+			then equippedPets[1]
+			else "",
+		equippedPets = equippedPets or {},
+		extraPetSlot = extraPetSlot,
 		upgrades = upgrades or {},
 		checkpointsClaimed = checkpointsClaimed or {},
 		respawnWorld = respawnWorld or 1,
@@ -104,7 +108,13 @@ local function onPlayerAdded(player: Player)
 	SizeService.initializePlayer(player, data)
 	WorldService.initializePlayer(player, data.reachedWorld)
 	EconomyService.initializePlayer(player, data.coins, data.upgrades)
-	PetService.initializePlayer(player, data.pets, data.petNames, data.equippedPet)
+	PetService.initializePlayer(
+		player,
+		data.pets,
+		data.petNames,
+		data.equippedPets,
+		data.extraPetSlot
+	)
 	CheckpointService.initializePlayer(
 		player,
 		data.checkpointsClaimed,
@@ -157,6 +167,7 @@ local remoteHandlers: { [string]: (Player, ...any) -> (boolean, any) } = {
 	RequestTeleport = WorldService.attemptTeleport,
 	HatchEgg = PetService.hatchEgg,
 	EquipPet = PetService.equipPet,
+	BuyPetSlot = PetService.buyPetSlot,
 	RenamePet = PetService.renamePet,
 	BuyPotion = EconomyService.buyPotion,
 	BuyUpgrade = EconomyService.buyUpgrade,

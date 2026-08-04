@@ -284,6 +284,7 @@ local function buildShopWindow(parent: Instance): Frame
 		ScrollBarThickness = 6,
 		Parent = window,
 	})
+	UiBuilder.bubbly(cardList)
 
 	UiBuilder.create("UIListLayout", {
 		Padding = UDim.new(0, 12),
