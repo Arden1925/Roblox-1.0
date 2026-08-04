@@ -315,14 +315,18 @@ function PortalGui.start()
 			Color3.fromRGB(255, 202, 58),
 			0
 		)
-		createSpecialRow(
-			rowList,
-			"TdsTown",
-			-1,
-			"\u{1F3D8} TDS Town",
-			Color3.fromRGB(97, 255, 66),
-			-1
-		)
+		-- The separate TDS island row only shows while that island is
+		-- enabled; the town itself lives on the Main Island.
+		if GameConfig.tdsIsland.enabled then
+			createSpecialRow(
+				rowList,
+				"TdsTown",
+				-1,
+				"\u{1F3D8} TDS Town",
+				Color3.fromRGB(97, 255, 66),
+				-1
+			)
+		end
 		for worldIndex = 1, #GameConfig.worlds do
 			createWorldRow(rowList, worldIndex, window)
 		end
