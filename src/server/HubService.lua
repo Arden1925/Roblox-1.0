@@ -2,8 +2,9 @@
 	The Main Island: a cozy floating hub far above and behind the
 	worlds, built at runtime like the rest of the map. It carries the
 	landing pad, the shop stall, the travel portal, the group chest, a
-	house, the prize wheel, the egg garden, the TDS town district, and
-	an open sky terrace on the front quarter for viewing future islands.
+	house, the prize wheel, the egg garden, and an open sky terrace on
+	the front quarter for viewing the other islands. The bought TDS map
+	floats in that view as its own walkable island, built here too.
 
 	Also routes players home: tutorial graduates and returning players
 	are pivoted to the pad and handed to the client's landing cutscene
@@ -31,7 +32,6 @@ local ROOF_COLOR = Color3.fromRGB(214, 108, 76)
 local SIGN_TEXT_COLOR = Color3.fromRGB(255, 255, 255)
 
 local ISLAND_THICKNESS = 4
-local TOWN_FOOTPRINT = 95
 local EGG_HEIGHT = 4
 local DECORATED_EGG_HEIGHT = 5.5
 
@@ -428,7 +428,6 @@ local function buildBase(parent: Instance)
 		{ target = Vector3.new(-45, 0, 75), width = 6 }, -- shop stall
 		{ target = Vector3.new(28, 0, 62), width = 5 }, -- group chest
 		{ target = Vector3.new(62, 0, -95), width = 6 }, -- house
-		{ target = Vector3.new(-85, 0, -40), width = 6 }, -- town
 		{ target = Vector3.new(85, 0, -55), width = 6 }, -- egg garden
 		{ target = Vector3.new(0, 0, 110), width = 10 }, -- terrace
 	}) do
@@ -660,7 +659,7 @@ local function buildTerrace(parent: Instance)
 		CanCollide = false,
 		Parent = parent,
 	})
-	addBillboard(viewSign, "NEW ISLANDS & PARKOURS COMING SOON...", SIGN_TEXT_COLOR, 3)
+	addBillboard(viewSign, "TDS TOWN AHEAD -- MORE ISLANDS COMING SOON...", SIGN_TEXT_COLOR, 3)
 	createPart({
 		Name = "ViewSignPost",
 		Size = Vector3.new(0.8, 5, 0.8),
@@ -1051,31 +1050,147 @@ local function buildSigns(parent: Instance)
 	end
 end
 
-local function placeTown(parent: Instance, modelsFolder: Instance)
+--[[
+	The TDS town island: the bought map floating as its own island in
+	the terrace's view. Unlike hub decorations, the map keeps its
+	authored collision -- only anchoring is forced -- so every street,
+	roof, and prop is physically walkable.
+]]
+local function buildTdsIsland(modelsFolder: Instance)
+	if Workspace:FindFirstChild("TdsIsland") ~= nil then
+		return
+	end
+
 	local pack = modelsFolder:FindFirstChild("Tds_Town_Pack")
 	local template = if pack ~= nil then pack:FindFirstChild("Scenery") else nil
 	if template == nil or not template:IsA("Model") then
-		warn("Hub town pack missing; skipping the town district")
+		warn("TDS town pack missing; skipping the TDS island")
 		return
+	end
+
+	local tds = GameConfig.tdsIsland
+	local islandCenter = Vector3.new(tds.centerX, tds.surfaceY, tds.centerZ)
+	-- The platform outsizes the map enough to leave the arrival strip
+	-- clear on the hub-facing edge.
+	local platformSize = tds.footprint + 60
+
+	local islandFolder = Instance.new("Folder")
+	islandFolder.Name = "TdsIsland"
+
+	createPart({
+		Name = "IslandGrass",
+		Size = Vector3.new(platformSize, ISLAND_THICKNESS, platformSize),
+		Position = islandCenter - Vector3.new(0, ISLAND_THICKNESS / 2, 0),
+		Color = GRASS_COLOR,
+		Material = Enum.Material.Grass,
+		Parent = islandFolder,
+	})
+
+	createPart({
+		Name = "IslandDirt",
+		Size = Vector3.new(platformSize - 50, 30, platformSize - 50),
+		Position = islandCenter - Vector3.new(0, ISLAND_THICKNESS + 15, 0),
+		Color = DIRT_COLOR,
+		Material = Enum.Material.Ground,
+		Parent = islandFolder,
+	})
+
+	for shelfIndex, shelf in ipairs({
+		{ size = 250, height = 26, drop = 47 },
+		{ size = 150, height = 22, drop = 70 },
+		{ size = 70, height = 18, drop = 89 },
+	}) do
+		createPart({
+			Name = "IslandRock" .. shelfIndex,
+			Size = Vector3.new(shelf.size, shelf.height, shelf.size),
+			Position = islandCenter - Vector3.new(0, shelf.drop, 0),
+			Color = ROCK_COLOR,
+			Material = Enum.Material.Slate,
+			Parent = islandFolder,
+		})
 	end
 
 	local town = template:Clone()
-	makeInert(town)
+	for _, descendant in ipairs(town:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			descendant.Anchored = true
+		end
+	end
 
 	local extents = town:GetExtentsSize()
-	local footprint = math.max(extents.X, extents.Z)
-	if footprint < 1 then
+	local widest = math.max(extents.X, extents.Z)
+	if widest < 1 then
 		town:Destroy()
+		islandFolder:Destroy()
 		return
 	end
 
-	town:ScaleTo(TOWN_FOOTPRINT / footprint)
+	town:ScaleTo(tds.footprint / widest)
 
+	-- Nudged away from the arrival edge so the pad and portal stay in
+	-- the open.
 	local boxCFrame, boxSize = town:GetBoundingBox()
-	local target = CENTER + Vector3.new(-85, boxSize.Y / 2, -40)
+	local target = islandCenter + Vector3.new(0, boxSize.Y / 2, 25)
 	town:PivotTo(town:GetPivot() + (target - boxCFrame.Position))
-	town.Name = "TownDistrict"
-	town.Parent = parent
+	town.Name = "TdsTown"
+	town.Parent = islandFolder
+
+	-- The arrival strip: teleports land on the pad, the sign says where
+	-- you are, and the portal takes you anywhere else.
+	local padPosition = islandCenter + Vector3.new(0, 0, tds.padOffsetZ)
+	local pad = createPart({
+		Name = "TdsArrivalPad",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.6, 22, 22),
+		CFrame = CFrame.new(padPosition + Vector3.new(0, 0.3, 0))
+			* CFrame.Angles(0, 0, math.rad(90)),
+		Color = GOLD_COLOR,
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = islandFolder,
+	})
+	addBillboard(pad, "TDS TOWN -- EXPLORE THE STREETS!", GOLD_COLOR, 9)
+
+	for _, pillarOffset in ipairs({ -8, 8 }) do
+		createPart({
+			Name = "PortalPillar",
+			Size = Vector3.new(2, 15, 2),
+			Position = padPosition + Vector3.new(pillarOffset + 34, 7.5, 0),
+			Color = Color3.fromRGB(62, 74, 96),
+			Material = Enum.Material.Slate,
+			Parent = islandFolder,
+		})
+	end
+
+	createPart({
+		Name = "PortalArch",
+		Size = Vector3.new(20, 2, 2),
+		Position = padPosition + Vector3.new(34, 16, 0),
+		Color = Color3.fromRGB(62, 74, 96),
+		Material = Enum.Material.Slate,
+		Parent = islandFolder,
+	})
+
+	-- Same orientation convention as every other portal: the cylinder's
+	-- flat axis faces the walker so PortalFx spins its rings correctly.
+	local swirl = createPart({
+		Name = "Portal",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(1, 13, 13),
+		CFrame = CFrame.new(padPosition + Vector3.new(34, 7.5, 0))
+			* CFrame.Angles(0, math.rad(90), 0),
+		Color = PORTAL_GREEN,
+		Material = Enum.Material.Neon,
+		Transparency = 0.15,
+		CanCollide = false,
+		Parent = islandFolder,
+	})
+	addPrompt(swirl, "Travel", "Portal")
+	addBillboard(swirl, "PORTAL -- TRAVEL BACK!", PORTAL_GREEN, 9)
+	addOutline(swirl, Color3.fromRGB(160, 255, 130))
+	CollectionService:AddTag(swirl, "Portal")
+
+	islandFolder.Parent = Workspace
 end
 
 local function placeEggGarden(parent: Instance, modelsFolder: Instance)
@@ -1253,8 +1368,8 @@ function HubService.start()
 	buildSigns(hubFolder)
 
 	if modelsFolder ~= nil then
-		placeTown(hubFolder, modelsFolder)
 		placeEggGarden(hubFolder, modelsFolder)
+		buildTdsIsland(modelsFolder)
 	end
 
 	hubFolder.Parent = Workspace

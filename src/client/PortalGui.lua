@@ -221,12 +221,19 @@ function PortalGui.start()
 	local window = buildWindow(screenGui)
 	local rowList = window:FindFirstChild("RowList")
 
-	-- The Main Island row: pinned on top, always unlocked -- index 0 is
-	-- the server's hub sentinel, not a real world.
-	local function createHubRow(parent: Instance)
+	-- The pinned always-unlocked rows: Main Island and TDS Town. Their
+	-- indexes (0 and -1) are server sentinels, not real worlds.
+	local function createSpecialRow(
+		parent: Instance,
+		rowName: string,
+		layoutOrder: number,
+		labelText: string,
+		labelColor: Color3,
+		teleportIndex: number
+	)
 		local row = UiBuilder.create("Frame", {
-			Name = "MainIsland",
-			LayoutOrder = 0,
+			Name = rowName,
+			LayoutOrder = layoutOrder,
 			Size = UDim2.new(1, -16, 0, 56),
 			BackgroundColor3 = ROW_COLOR,
 			BorderSizePixel = 0,
@@ -244,8 +251,8 @@ function PortalGui.start()
 			Size = UDim2.new(1, -140, 1, 0),
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBold,
-			Text = "\u{2B50} Main Island",
-			TextColor3 = Color3.fromRGB(255, 202, 58),
+			Text = labelText,
+			TextColor3 = labelColor,
 			TextSize = 18,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Parent = row,
@@ -276,7 +283,7 @@ function PortalGui.start()
 
 				-- InvokeServer throws if the server errors mid-call.
 				local invoked, success, message = pcall(function()
-					return requestTeleport:InvokeServer(0)
+					return requestTeleport:InvokeServer(teleportIndex)
 				end)
 
 				if invoked then
@@ -300,7 +307,22 @@ function PortalGui.start()
 			end
 		end
 
-		createHubRow(rowList)
+		createSpecialRow(
+			rowList,
+			"MainIsland",
+			-2,
+			"\u{2B50} Main Island",
+			Color3.fromRGB(255, 202, 58),
+			0
+		)
+		createSpecialRow(
+			rowList,
+			"TdsTown",
+			-1,
+			"\u{1F3D8} TDS Town",
+			Color3.fromRGB(97, 255, 66),
+			-1
+		)
 		for worldIndex = 1, #GameConfig.worlds do
 			createWorldRow(rowList, worldIndex, window)
 		end
