@@ -56,11 +56,11 @@ local TERRAIN_WATER = Color3.fromRGB(70, 160, 200)
 
 local ISLAND_THICKNESS = 4
 
--- Tier heights above hub.surfaceY. The town tier and high tier are
--- terrain plateaus; the deck rides the World Tree's trunk.
-local TIER_MID = 12
-local TIER_HIGH = 26
-local TIER_DECK = 48
+-- Tier heights above hub.surfaceY. Cliff-steep terrain: the town
+-- plateau and the tree hill are real height, not mounds.
+local TIER_MID = 22
+local TIER_HIGH = 55
+local TIER_DECK = 82
 
 -- The client wires its landing listener during boot; this delay keeps
 -- the cutscene event from firing before anyone is listening.
@@ -82,7 +82,7 @@ local HATCHERY_CENTER = CENTER + Vector3.new(150, 0, 120)
 local GROTTO_CENTER = CENTER + Vector3.new(-60, -16, 150)
 local PORTAL_ISLE = CENTER + Vector3.new(-60, -8, 330)
 local CARNIVAL_ISLE = CENTER + Vector3.new(-300, 4, 60)
-local BALLOON_ISLE = CENTER + Vector3.new(285, 16, -150)
+local BALLOON_ISLE = CENTER + Vector3.new(285, 26, -150)
 
 local cutsceneSeenByPlayer: { [Player]: boolean } = {}
 
@@ -404,11 +404,13 @@ local function fillBox(position: Vector3, size: Vector3, material: Enum.Material
 end
 
 --[[
-	Sculpts the whole island body: the low-tier blob, the rectangular
-	town plateau, the high-tier hill, the tapering rock underside, the
-	sand cove, the lagoon with the sky-well carved through it, the
-	spring pond, the mid pool, the grotto pocket with its entry stair,
-	and the three satellite isles plus drifting rocks.
+	Sculpts the island body: a rolling low tier with grassy knolls and
+	rim crags, a cliff-walled town plateau, a tall tree hill, the
+	tapering rock keel, the sand cove, the lagoon with the sky-well
+	carved through the island, the spring pond and mid pool, the
+	open-cut grotto stair, and the satellite isles. Plateau and hill
+	are stacked shrinking layers, so their faces read as real cliffs
+	instead of smoothed mounds.
 ]]
 local function sculptIsland()
 	terrain:SetMaterialColor(Enum.Material.Grass, TERRAIN_GRASS)
@@ -426,59 +428,86 @@ local function sculptIsland()
 		fillDisc(base + Vector3.new(0, -1.5, 0), 5, blob.radius, Enum.Material.Grass)
 	end
 
-	-- Town plateau: rectangular so the walled town seats fully, with
-	-- ball corners so it still reads organic from the air.
-	local plateauCenter = CENTER + Vector3.new(55, 0, -70)
-	fillBox(
-		plateauCenter + Vector3.new(0, TIER_MID / 2 - 4, 0),
-		Vector3.new(230, TIER_MID + 8, 240),
-		Enum.Material.Rock
-	)
-	fillBox(
-		plateauCenter + Vector3.new(0, TIER_MID - 1.5, 0),
-		Vector3.new(230, 5, 240),
-		Enum.Material.Grass
-	)
-	for _, corner in ipairs({
-		Vector3.new(-115, 0, -120),
-		Vector3.new(115, 0, -120),
-		Vector3.new(-115, 0, 120),
-		Vector3.new(115, 0, 120),
+	-- Rolling ground: shallow grass knolls scattered across the lawns.
+	for _, knoll in ipairs({
+		{ offset = Vector3.new(-150, 0, 60), radius = 38, rise = 6 },
+		{ offset = Vector3.new(-170, 0, 150), radius = 30, rise = 5 },
+		{ offset = Vector3.new(170, 0, 60), radius = 24, rise = 4 },
+		{ offset = Vector3.new(110, 0, 180), radius = 30, rise = 5 },
+		{ offset = Vector3.new(-110, 0, 30), radius = 26, rise = 4 },
+		{ offset = Vector3.new(75, 0, 138), radius = 22, rise = 3.5 },
 	}) do
 		terrain:FillBall(
-			plateauCenter + corner + Vector3.new(0, TIER_MID - 14, 0),
-			26,
+			CENTER + knoll.offset + Vector3.new(0, knoll.rise - knoll.radius, 0),
+			knoll.radius,
+			Enum.Material.Grass
+		)
+	end
+
+	-- Rim crags: rock teeth around the island edge.
+	for _, crag in ipairs({
+		{ offset = Vector3.new(215, 0, 90), radius = 12 },
+		{ offset = Vector3.new(150, 0, 215), radius = 10 },
+		{ offset = Vector3.new(-90, 0, 240), radius = 11 },
+		{ offset = Vector3.new(-205, 0, 130), radius = 13 },
+		{ offset = Vector3.new(-235, 0, 10), radius = 10 },
+		{ offset = Vector3.new(205, 0, -25), radius = 11 },
+	}) do
+		terrain:FillBall(
+			CENTER + crag.offset + Vector3.new(0, crag.radius * 0.35, 0),
+			crag.radius,
 			Enum.Material.Rock
 		)
 	end
 
-	-- High tier hill, two lobes behind and west of the town.
-	for _, lobe in ipairs({
-		{ offset = Vector3.new(-145, 0, -130), radius = 95 },
-		{ offset = Vector3.new(-100, 0, -195), radius = 60 },
-	}) do
-		local base = CENTER + lobe.offset
-		fillDisc(
-			base + Vector3.new(0, TIER_HIGH / 2 - 5, 0),
-			TIER_HIGH + 10,
-			lobe.radius,
+	-- Town plateau: stacked shrinking rock slabs make ~70 degree cliff
+	-- faces, sized tight to the town's measured 172 x 163 footprint.
+	local plateauCenter = CENTER + Vector3.new(55, 0, -70)
+	for layerIndex = 0, 4 do
+		local shrink = (4 - layerIndex) * 10
+		fillBox(
+			plateauCenter + Vector3.new(0, 2 + layerIndex * 4.5, 0),
+			Vector3.new(205 + shrink, 6, 195 + shrink),
 			Enum.Material.Rock
 		)
-		fillDisc(base + Vector3.new(0, TIER_HIGH - 1.5, 0), 5, lobe.radius, Enum.Material.Grass)
+	end
+	fillBox(
+		plateauCenter + Vector3.new(0, TIER_MID - 1.5, 0),
+		Vector3.new(205, 5, 195),
+		Enum.Material.Grass
+	)
+
+	-- Tree hill: two stacked-disc lobes rising to the high tier.
+	for _, lobe in ipairs({
+		{ offset = Vector3.new(-145, 0, -130), radius = 95, topRadius = 62 },
+		{ offset = Vector3.new(-100, 0, -195), radius = 60, topRadius = 38 },
+	}) do
+		local base = CENTER + lobe.offset
+		for layerIndex = 0, 6 do
+			local progress = layerIndex / 6
+			local radius = lobe.radius + (lobe.topRadius - lobe.radius) * progress
+			fillDisc(
+				base + Vector3.new(0, 3 + progress * (TIER_HIGH - 8), 0),
+				9,
+				radius,
+				Enum.Material.Rock
+			)
+		end
+		fillDisc(base + Vector3.new(0, TIER_HIGH - 1.5, 0), 5, lobe.topRadius, Enum.Material.Grass)
 	end
 
 	-- Rock underside: shrinking discs taper the island to a keel.
 	fillDisc(CENTER + Vector3.new(0, -20, 30), 24, 200, Enum.Material.Rock)
 	fillDisc(CENTER + Vector3.new(20, -45, 0), 26, 140, Enum.Material.Rock)
 	fillDisc(CENTER + Vector3.new(-30, -72, 10), 28, 85, Enum.Material.Rock)
-	fillDisc(CENTER + Vector3.new(30, -98, -10), 24, 45, Enum.Material.Rock)
+	fillDisc(CENTER + Vector3.new(30, -105, -10), 30, 45, Enum.Material.Rock)
 
 	-- Sand cove along the front edge.
 	fillBox(CENTER + Vector3.new(-10, -1, 185), Vector3.new(200, 6, 90), Enum.Material.Sand)
 
 	-- Lagoon: carve the basin, fill the water, then carve the sky-well
 	-- straight through the island. The water ring holds; the hole
-	-- falls into open sky.
+	-- falls into open sky (the safety net below catches the ride).
 	fillDisc(LAGOON_CENTER + Vector3.new(0, -2, 0), 8, LAGOON_RADIUS + 2, Enum.Material.Air)
 	fillDisc(LAGOON_CENTER + Vector3.new(0, -2.5, 0), 5, LAGOON_RADIUS, Enum.Material.Water)
 	fillDisc(LAGOON_CENTER + Vector3.new(0, -40, 0), 84, 11, Enum.Material.Air)
@@ -492,12 +521,13 @@ local function sculptIsland()
 	fillDisc(midPool + Vector3.new(0, -1.5, 0), 5, 14, Enum.Material.Air)
 	fillDisc(midPool + Vector3.new(0, -1.8, 0), 3.6, 13, Enum.Material.Water)
 
-	-- Grotto: an air pocket in the rock under the cove, with a stepped
-	-- stair carved down from the sand.
+	-- Grotto: an air pocket under the cove, entered by an open-cut
+	-- trench sloping down from the sand (stairs and rails are built in
+	-- buildGrotto, so the hole reads as an entrance, not a trap).
 	fillDisc(GROTTO_CENTER, 14, 15, Enum.Material.Air)
-	fillBox(CENTER + Vector3.new(-60, -3, 178), Vector3.new(10, 10, 16), Enum.Material.Air)
-	fillBox(CENTER + Vector3.new(-60, -9, 166), Vector3.new(10, 10, 16), Enum.Material.Air)
-	fillBox(CENTER + Vector3.new(-60, -14, 156), Vector3.new(10, 12, 14), Enum.Material.Air)
+	fillBox(CENTER + Vector3.new(-60, -2, 182), Vector3.new(12, 8, 14), Enum.Material.Air)
+	fillBox(CENTER + Vector3.new(-60, -7, 170), Vector3.new(12, 10, 14), Enum.Material.Air)
+	fillBox(CENTER + Vector3.new(-60, -12, 158), Vector3.new(12, 12, 14), Enum.Material.Air)
 
 	-- Satellite isles: small grass-capped rock pucks.
 	for _, isle in ipairs({
@@ -521,12 +551,6 @@ local function sculptIsland()
 	end
 end
 
---[[
-	The World Tree: a tapering part trunk crowned with cartoon canopy
-	spheres, root flares at the base, a spiral stair climbing to the
-	deck, hanging lianas, and fireflies. The pond and the tier falls
-	are terrain water sculpted earlier; this is the wood.
-]]
 local function buildWorldTree(parent: Instance)
 	-- Trunk: stacked tapering cylinders with a slight lean per segment.
 	local segmentBase = TREE_BASE
@@ -567,11 +591,11 @@ local function buildWorldTree(parent: Instance)
 	-- cartoon style at colossal scale.
 	local canopyCenter = TREE_BASE + Vector3.new(0, TIER_DECK - TIER_HIGH + 14, 0)
 	for _, puff in ipairs({
-		{ offset = Vector3.new(0, 4, 0), radius = 17 },
-		{ offset = Vector3.new(-12, -2, 6), radius = 12 },
-		{ offset = Vector3.new(12, -1, -6), radius = 12 },
-		{ offset = Vector3.new(6, 0, 11), radius = 10 },
-		{ offset = Vector3.new(-7, 1, -11), radius = 10 },
+		{ offset = Vector3.new(0, 5, 0), radius = 21 },
+		{ offset = Vector3.new(-15, -2, 8), radius = 15 },
+		{ offset = Vector3.new(15, -1, -8), radius = 15 },
+		{ offset = Vector3.new(8, 0, 14), radius = 12 },
+		{ offset = Vector3.new(-9, 1, -14), radius = 12 },
 	}) do
 		createPart({
 			Name = "WorldTreeCanopy",
@@ -618,7 +642,7 @@ local function buildWorldTree(parent: Instance)
 
 	-- Spiral stair: two turns around the trunk from the hill to the
 	-- deck rim.
-	local STEP_COUNT = 26
+	local STEP_COUNT = 34
 	for stepIndex = 0, STEP_COUNT do
 		local progress = stepIndex / STEP_COUNT
 		local angle = progress * math.pi * 4
@@ -653,10 +677,10 @@ local function buildWorldTree(parent: Instance)
 end
 
 --[[
-	The river's vertical moments: glassy waterfall columns at each tier
-	lip, foam at their feet, and the sky-well column falling from the
-	lagoon's hole straight through the island with mist at the rim.
-	The flat water between them is terrain, sculpted earlier.
+	The river's vertical moments: a 33-stud fall off the tree hill, a
+	22-stud fall off the plateau cliff into the lagoon, and the
+	sky-well column falling from the lagoon's hole straight through
+	the island. Flat water between them is terrain, sculpted earlier.
 ]]
 local function buildFalls(parent: Instance)
 	local function fallColumn(topPosition: Vector3, dropHeight: number, thickness: number)
@@ -687,17 +711,18 @@ local function buildFalls(parent: Instance)
 		return column
 	end
 
-	-- High lip: pond overflow down to the mid pool's channel.
-	fallColumn(CENTER + Vector3.new(-66, TIER_HIGH, -77), TIER_HIGH - TIER_MID, 5)
-	-- Plateau lip: mid pool down to the lagoon.
-	fallColumn(CENTER + Vector3.new(22, TIER_MID, 50), TIER_MID, 5)
+	-- Hill lip: pond overflow plunges to the mid pool's channel, at
+	-- the point the hill's top rim crosses the flow line.
+	fallColumn(CENTER + Vector3.new(-92, TIER_HIGH, -90), TIER_HIGH - TIER_MID, 5)
+	-- Plateau cliff lip: mid pool down to the lagoon.
+	fallColumn(CENTER + Vector3.new(22, TIER_MID, 27), TIER_MID, 5)
 
 	-- The sky-well: the lagoon drains through the island. The column
 	-- runs from the water surface down past the keel.
 	createPart({
 		Name = "SkyWellColumn",
-		Size = Vector3.new(9, 118, 9),
-		Position = LAGOON_CENTER + Vector3.new(0, -59, 0),
+		Size = Vector3.new(9, 130, 9),
+		Position = LAGOON_CENTER + Vector3.new(0, -65, 0),
 		Color = WATERFALL_COLOR,
 		Material = Enum.Material.Glass,
 		Transparency = 0.4,
@@ -716,22 +741,25 @@ local function buildFalls(parent: Instance)
 		CanCollide = false,
 		Parent = parent,
 	})
-	addBillboard(rim, "THE SKY-WELL", Color3.fromRGB(180, 226, 244), 7)
+	addBillboard(
+		rim,
+		"THE SKY-WELL -- JUMP IN, IT BRINGS YOU HOME!",
+		Color3.fromRGB(180, 226, 244),
+		7
+	)
 	addGlowMotes(parent, LAGOON_CENTER + Vector3.new(0, 1.5, 0), Color3.fromRGB(210, 240, 250), 16)
 
 	-- Terrain water cannot slope, so each channel is a flat strip and
-	-- the falls carry the height. The strips are decorative part water
-	-- flush with the ground.
+	-- the falls carry the height.
 	for _, strip in ipairs({
 		{
 			from = TREE_BASE + Vector3.new(30, 0, 35),
-			to = CENTER + Vector3.new(-66, TIER_HIGH, -77),
+			to = CENTER + Vector3.new(-92, TIER_HIGH, -90),
 		},
 		{
 			from = CENTER + Vector3.new(0, TIER_MID, -20),
-			to = CENTER + Vector3.new(22, TIER_MID, 50),
+			to = CENTER + Vector3.new(22, TIER_MID, 27),
 		},
-		{ from = LAGOON_CENTER, to = LAGOON_CENTER },
 	}) do
 		local span = strip.to - strip.from
 		local length = span.Magnitude
@@ -901,8 +929,9 @@ end
 
 --[[
 	Cobbled roads linking the districts. Flat segments hug each tier;
-	the tier changes ride sloped ramp parts so every route is walkable
-	without jumping.
+	the tier changes ride long sloped ramps so every route stays
+	walkable at the new cliff heights. Two roads run into the town's
+	open south and west sides.
 ]]
 local function buildRoads(parent: Instance)
 	local function flatRoad(fromOffset: Vector3, toOffset: Vector3, width: number)
@@ -943,11 +972,15 @@ local function buildRoads(parent: Instance)
 		})
 	end
 
-	-- Plaza to the town's south gate: flat, then the embankment ramp.
-	flatRoad(Vector3.new(-70, 0, 95), Vector3.new(10, 0, 62), 7)
-	ramp(Vector3.new(10, 0, 62), Vector3.new(40, TIER_MID, 32), 10)
-	-- Gate approach to the market row.
-	flatRoad(Vector3.new(40, TIER_MID, 32), Vector3.new(42, TIER_MID, 24), 8)
+	-- Plaza to the town's south entry: flat approach, long ramp up the
+	-- cliff, then into the open south side.
+	flatRoad(Vector3.new(-70, 0, 95), Vector3.new(10, 0, 68), 7)
+	ramp(Vector3.new(10, 0, 68), Vector3.new(35, TIER_MID, 20), 10)
+	flatRoad(Vector3.new(35, TIER_MID, 20), Vector3.new(20, TIER_MID, 8), 8)
+	-- Plaza west ramp to the plateau, then into the open west side.
+	ramp(Vector3.new(-58, 0, 40), Vector3.new(-42, TIER_MID, -6), 8)
+	flatRoad(Vector3.new(-42, TIER_MID, -6), Vector3.new(-40, TIER_MID, -45), 5)
+	flatRoad(Vector3.new(-40, TIER_MID, -45), Vector3.new(-26, TIER_MID, -60), 5)
 	-- Plaza to the cove and the portal bridge head.
 	flatRoad(Vector3.new(-80, 0, 110), Vector3.new(-58, 0, 225), 6)
 	-- Plaza to the lagoon overlook.
@@ -956,23 +989,22 @@ local function buildRoads(parent: Instance)
 	flatRoad(Vector3.new(82, 0, 78), Vector3.new(138, 0, 108), 6)
 	-- West lawn to the carnival bridge head.
 	flatRoad(Vector3.new(-120, 0, 82), Vector3.new(-225, 0, 58), 5)
-	-- Mid tier east edge to the balloon bridge head.
-	flatRoad(Vector3.new(150, TIER_MID, -70), Vector3.new(168, TIER_MID, -102), 5)
+	-- Plateau east edge to the balloon bridge head.
+	flatRoad(Vector3.new(140, TIER_MID, -70), Vector3.new(152, TIER_MID, -102), 5)
 	-- High tier: pond side path to the stair foot.
-	flatRoad(Vector3.new(-110, TIER_HIGH, -98), Vector3.new(-132, TIER_HIGH, -128), 4)
-	-- Mid tier to high tier ramp on the west side.
-	ramp(Vector3.new(-40, TIER_MID, -60), Vector3.new(-68, TIER_HIGH, -82), 8)
-	-- Plaza to mid tier west ramp (second route up, by the falls).
-	ramp(Vector3.new(-58, 0, 40), Vector3.new(-40, TIER_MID, -2), 8)
+	flatRoad(Vector3.new(-118, TIER_HIGH, -112), Vector3.new(-132, TIER_HIGH, -128), 4)
+	-- Plateau to the hill top: one long ramp up the saddle.
+	ramp(Vector3.new(-38, TIER_MID, -50), Vector3.new(-95, TIER_HIGH, -105), 8)
 end
 
 --[[
-	Seats the bought TDS town ON the island's mid tier at native scale,
-	fully walkable (anchor only, collision kept). Its real wall gaps
-	become the gates: the south gap opens onto the market row and the
-	ramp down to the plaza, the east gap onto a fenced cliff overlook.
-	Embankments, grass walls, and bushes tuck the wall footings into
-	the terrain so the town reads as grown-in.
+	Seats the bought TDS town ON the plateau at native scale, fully
+	walkable. Measured live: the model is 172 x 163 with mostly open
+	edges (it is a building cluster, not a walled town), so the roads
+	run straight into its open south and west sides. The model sinks
+	1.5 studs so every foundation beds into the grass, and a dense
+	skirt of bushes, grass walls, and corner trees ties the outside
+	edge into the island. The east cliff edge gets a fenced overlook.
 ]]
 local function seatTown(parent: Instance)
 	local template: Instance? = nil
@@ -981,80 +1013,114 @@ local function seatTown(parent: Instance)
 		template = if pack ~= nil then pack:FindFirstChild("Scenery") else nil
 	end
 
-	if template == nil or not template:IsA("Model") then
-		-- Placeholder keep: four wall runs and two gate posts hold the
-		-- town's footprint until the pack syncs.
-		for _, wall in ipairs({
-			{ offset = Vector3.new(0, 0, -97), size = Vector3.new(169, 14, 3) },
-			{ offset = Vector3.new(0, 0, 97), size = Vector3.new(60, 14, 3) },
-			{ offset = Vector3.new(-84, 0, 0), size = Vector3.new(3, 14, 195) },
-			{ offset = Vector3.new(84, 0, 0), size = Vector3.new(3, 14, 195) },
+	local halfX, halfZ = 86, 81.5
+
+	if template ~= nil and template:IsA("Model") then
+		local town = template:Clone()
+		for _, descendant in ipairs(town:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+			end
+		end
+
+		local boxCFrame, boxSize = town:GetBoundingBox()
+		halfX, halfZ = boxSize.X / 2, boxSize.Z / 2
+		local target = TOWN_CENTER + Vector3.new(0, boxSize.Y / 2 - 1.5, 0)
+		town:PivotTo(town:GetPivot() + (target - boxCFrame.Position))
+		town.Name = "TdsTown"
+		town.Parent = parent
+	else
+		for _, marker in ipairs({
+			{ offset = Vector3.new(0, 0, 0), size = Vector3.new(30, 18, 30) },
+			{ offset = Vector3.new(-50, 0, -40), size = Vector3.new(24, 14, 24) },
+			{ offset = Vector3.new(45, 0, 40), size = Vector3.new(24, 12, 24) },
 		}) do
 			createPart({
-				Name = "FallbackTownWall",
-				Size = wall.size,
-				Position = TOWN_CENTER + wall.offset + Vector3.new(0, 7, 0),
+				Name = "FallbackTownBlock",
+				Size = marker.size,
+				Position = TOWN_CENTER + marker.offset + Vector3.new(0, marker.size.Y / 2, 0),
 				Color = Color3.fromRGB(124, 92, 70),
 				Material = Enum.Material.Wood,
 				Parent = parent,
 			})
 		end
-		warn("HubService: TDS town pack missing; placeholder walls mark its footprint")
-		return
+		warn("HubService: TDS town pack missing; placeholder blocks mark its footprint")
 	end
 
-	local town = template:Clone()
-	for _, descendant in ipairs(town:GetDescendants()) do
-		if descendant:IsA("BasePart") then
-			descendant.Anchored = true
+	-- Dense skirt: bushes and grass walls every ~14 studs around the
+	-- whole perimeter, skipping the two road mouths.
+	local SKIRT = { "Bush", "Tall Bush", "Bush 2", "Tall Bush Flower", "Double Tall Bush" }
+	local skirtIndex = 0
+	local perimeter = {}
+	for along = -halfX + 8, halfX - 8, 14 do
+		table.insert(perimeter, Vector3.new(along, 0, halfZ + 5))
+		table.insert(perimeter, Vector3.new(along, 0, -halfZ - 5))
+	end
+	for along = -halfZ + 8, halfZ - 8, 14 do
+		table.insert(perimeter, Vector3.new(halfX + 5, 0, along))
+		table.insert(perimeter, Vector3.new(-halfX - 5, 0, along))
+	end
+	for _, offset in ipairs(perimeter) do
+		local worldSpot = TOWN_CENTER + offset
+		-- Skip the south road mouth (near x -35 on the south edge) and
+		-- the west road mouth (near z 10 on the west edge).
+		local isSouthMouth = offset.Z > 0 and math.abs(offset.X - -35) < 16
+		local isWestMouth = offset.X < 0 and math.abs(offset.Z - 10) < 16
+		if not isSouthMouth and not isWestMouth then
+			skirtIndex += 1
+			if skirtIndex % 5 == 0 then
+				placeProp(
+					parent,
+					bundlePath("Grass", 1 + skirtIndex % 3),
+					worldSpot,
+					4,
+					skirtIndex * 47
+				)
+			else
+				placeProp(
+					parent,
+					naturePath(SKIRT[skirtIndex % #SKIRT + 1]),
+					worldSpot + Vector3.new(rng:NextNumber(-2, 2), 0, rng:NextNumber(-2, 2)),
+					3 + (skirtIndex % 3),
+					skirtIndex * 61
+				)
+			end
 		end
 	end
 
-	local boxCFrame, boxSize = town:GetBoundingBox()
-	local target = TOWN_CENTER + Vector3.new(0, boxSize.Y / 2, 0)
-	town:PivotTo(town:GetPivot() + (target - boxCFrame.Position))
-	town.Name = "TdsTown"
-	town.Parent = parent
-
-	-- The gates, measured from the pack's own geometry: the south gap
-	-- sits at ~42% of the width along the front wall, the east gap at
-	-- ~18% of the depth along the east wall.
-	local southGate = TOWN_CENTER + Vector3.new(-boxSize.X / 2 + boxSize.X * 0.42, 0, boxSize.Z / 2)
-	local eastGate = TOWN_CENTER + Vector3.new(boxSize.X / 2, 0, -boxSize.Z / 2 + boxSize.Z * 0.18)
-
-	-- Grass-wall skirts and bushes tuck the outer wall footings in.
-	for skirtIndex = 0, 3 do
+	-- Corner trees taller than the rooftops tuck the corners in.
+	for cornerIndex, corner in ipairs({
+		Vector3.new(-halfX - 8, 0, -halfZ - 8),
+		Vector3.new(halfX + 8, 0, -halfZ - 8),
+		Vector3.new(-halfX - 8, 0, halfZ + 8),
+		Vector3.new(halfX + 8, 0, halfZ + 8),
+	}) do
 		placeProp(
 			parent,
-			bundlePath("Grass", 1 + skirtIndex % 3),
-			TOWN_CENTER + Vector3.new(-boxSize.X / 2 - 4, 0, -70 + skirtIndex * 44),
-			4,
-			90
-		)
-	end
-	for bushIndex = 0, 5 do
-		placeProp(
-			parent,
-			naturePath(if bushIndex % 2 == 0 then "Bush" else "Tall Bush"),
-			TOWN_CENTER
-				+ Vector3.new(
-					-boxSize.X / 2 + 8 + bushIndex * (boxSize.X - 16) / 5,
-					0,
-					boxSize.Z / 2 + 4 + rng:NextNumber(0, 3)
-				),
-			3,
-			bushIndex * 61
+			naturePath(if cornerIndex % 2 == 0 then "Tall Tree" else "Bigger Tree"),
+			TOWN_CENTER + corner,
+			15 + cornerIndex,
+			cornerIndex * 90,
+			fallbackTree
 		)
 	end
 
-	-- Gate lamps and the string lights over the south approach.
-	for _, gatePosition in ipairs({ southGate, eastGate }) do
+	-- Lamps and string lights at the south road mouth, lamps at the
+	-- west mouth.
+	local southMouth = TOWN_CENTER + Vector3.new(-35, 0, halfZ)
+	local westMouth = TOWN_CENTER + Vector3.new(-halfX, 0, 10)
+	for _, lampSpec in ipairs({
+		{ position = southMouth + Vector3.new(-9, 0, 6), yaw = 0 },
+		{ position = southMouth + Vector3.new(9, 0, 6), yaw = 180 },
+		{ position = westMouth + Vector3.new(-6, 0, -9), yaw = 90 },
+		{ position = westMouth + Vector3.new(-6, 0, 9), yaw = 270 },
+	}) do
 		local lamp = placeProp(
 			parent,
 			cityPath("City Lamps", "Street Lamp 2"),
-			gatePosition + Vector3.new(6, 0, 3),
+			lampSpec.position,
 			9,
-			0,
+			lampSpec.yaw,
 			fallbackLamp
 		)
 		if lamp ~= nil then
@@ -1062,12 +1128,12 @@ local function seatTown(parent: Instance)
 		end
 	end
 
-	local lightSpan = 16
+	local lightSpan = 18
 	for _, postSide in ipairs({ -1, 1 }) do
 		createPart({
 			Name = "StringLightPost",
 			Size = Vector3.new(0.7, 9, 0.7),
-			Position = southGate + Vector3.new(postSide * lightSpan / 2, 4.5, 8),
+			Position = southMouth + Vector3.new(postSide * lightSpan / 2, 4.5, 10),
 			Color = WOOD_COLOR,
 			Material = Enum.Material.Wood,
 			CanCollide = false,
@@ -1081,7 +1147,8 @@ local function seatTown(parent: Instance)
 			Name = "StringLightBead",
 			Shape = Enum.PartType.Ball,
 			Size = Vector3.new(0.8, 0.8, 0.8),
-			Position = southGate + Vector3.new(-lightSpan / 2 + progress * lightSpan, 8.6 - sag, 8),
+			Position = southMouth
+				+ Vector3.new(-lightSpan / 2 + progress * lightSpan, 8.6 - sag, 10),
 			Color = if beadIndex % 2 == 0 then GOLD_COLOR else Color3.fromRGB(255, 168, 120),
 			Material = Enum.Material.Neon,
 			CanCollide = false,
@@ -1089,20 +1156,29 @@ local function seatTown(parent: Instance)
 		})
 	end
 
-	-- The east gate opens onto a fenced cliff overlook.
+	-- The plateau's east cliff edge: a fenced overlook with a bench.
+	local overlook = CENTER + Vector3.new(150, TIER_MID, -70)
 	for fenceIndex = 0, 2 do
 		placeProp(
 			parent,
 			naturePath("Inf. Fence 1"),
-			eastGate + Vector3.new(12, 0, -8 + fenceIndex * 8),
+			overlook + Vector3.new(4, 0, -10 + fenceIndex * 10),
 			3,
 			90
 		)
 	end
+	placeProp(
+		parent,
+		cityPath("Benches & Picnic", "Wooden Bench 1"),
+		overlook + Vector3.new(-4, 0, 0),
+		3,
+		90,
+		fallbackBench
+	)
 	local overlookSign = createPart({
 		Name = "OverlookSign",
 		Size = Vector3.new(0.8, 4.4, 0.8),
-		Position = eastGate + Vector3.new(10, 2.2, 12),
+		Position = overlook + Vector3.new(-2, 2.2, 14),
 		Color = WOOD_COLOR,
 		Material = Enum.Material.Wood,
 		CanCollide = false,
@@ -1112,12 +1188,12 @@ local function seatTown(parent: Instance)
 end
 
 --[[
-	The market row at the town's south gate approach: the island shop
-	and the group chest as gate-front stalls, so commerce lives at the
-	town's doorstep without gambling on clipping its interior.
+	The market row flanking the road between the plaza and the town
+	ramp: the island shop and the group chest as roadside stalls, clear
+	of the lagoon basin.
 ]]
 local function buildMarketRow(parent: Instance)
-	local shopBase = TOWN_CENTER + Vector3.new(-16, 0, 116)
+	local shopBase = CENTER + Vector3.new(-30, 0, 88)
 
 	local counter = createPart({
 		Name = "ShopCounter",
@@ -1156,7 +1232,7 @@ local function buildMarketRow(parent: Instance)
 	addOutline(counter, GOLD_COLOR)
 	CollectionService:AddTag(counter, "ShopStation")
 
-	local chestBase = TOWN_CENTER + Vector3.new(18, 0, 118)
+	local chestBase = CENTER + Vector3.new(-46, 0, 70)
 	local body = createPart({
 		Name = "GroupChest",
 		Size = Vector3.new(5, 3, 3.4),
@@ -1194,7 +1270,7 @@ local function buildMarketRow(parent: Instance)
 	placeProp(
 		parent,
 		cityPath("Restaurant Related", "Outside Parasol Table"),
-		chestBase + Vector3.new(12, 0, -2),
+		chestBase + Vector3.new(-10, 0, -6),
 		7,
 		40
 	)
@@ -1421,13 +1497,52 @@ local function buildCove(parent: Instance)
 end
 
 --[[
-	The crystal grotto in the rock under the cove, reached by the
-	carved stair from the sand: part-built crystal clusters, a cave
-	formation, treasure, and slow purple motes. A jellyfish drifts in
-	the open sky just past the rim, visible from the grotto mouth and
-	the portal bridge.
+	The crystal grotto under the cove: entered by the open-cut trench
+	from the sand, now with cobble stairs, rail fences around the top
+	rim, and an entrance sign, so the hole is an invitation instead of
+	a trap. Inside: crystals, a cave formation, treasure, purple
+	motes. A jellyfish drifts just past the rim outside.
 ]]
 local function buildGrotto(parent: Instance)
+	-- The entry: three cobble ramps down the carved trench.
+	for stepIndex, stepSpec in ipairs({
+		{ from = Vector3.new(-60, 0.4, 188), to = Vector3.new(-60, -4.5, 176) },
+		{ from = Vector3.new(-60, -4.5, 176), to = Vector3.new(-60, -9.5, 164) },
+		{ from = Vector3.new(-60, -9.5, 164), to = Vector3.new(-60, -14.5, 154) },
+	}) do
+		local fromPosition = CENTER + stepSpec.from
+		local toPosition = CENTER + stepSpec.to
+		local span = toPosition - fromPosition
+		local midpoint = fromPosition + span / 2
+		createPart({
+			Name = "GrottoStair" .. stepIndex,
+			Size = Vector3.new(9, 1, span.Magnitude + 2),
+			CFrame = CFrame.lookAt(midpoint, toPosition),
+			Color = Color3.fromRGB(178, 168, 152),
+			Material = Enum.Material.Cobblestone,
+			Parent = parent,
+		})
+	end
+
+	-- Rails around the top of the trench so nobody walks in blind.
+	for _, railSpec in ipairs({
+		{ offset = Vector3.new(-67, 0, 182), yaw = 0 },
+		{ offset = Vector3.new(-53, 0, 182), yaw = 0 },
+		{ offset = Vector3.new(-60, 0, 190), yaw = 90 },
+	}) do
+		placeProp(parent, naturePath("Fence 1"), CENTER + railSpec.offset, 2.6, railSpec.yaw)
+	end
+	local grottoSign = createPart({
+		Name = "GrottoSign",
+		Size = Vector3.new(0.8, 4.2, 0.8),
+		Position = CENTER + Vector3.new(-70, 2.1, 190),
+		Color = WOOD_COLOR,
+		Material = Enum.Material.Wood,
+		CanCollide = false,
+		Parent = parent,
+	})
+	addBillboard(grottoSign, "THE CRYSTAL GROTTO -- STAIRS DOWN!", CRYSTAL_COLOR, 3)
+
 	for crystalIndex = 0, 4 do
 		local angle = crystalIndex / 5 * math.pi * 2
 		local crystalBase = GROTTO_CENTER
@@ -1813,16 +1928,17 @@ local function buildSatellites(parent: Instance)
 	)
 	buildRopeBridge(
 		parent,
-		CENTER + Vector3.new(170, TIER_MID, -105),
+		CENTER + Vector3.new(152, TIER_MID, -105),
 		BALLOON_ISLE + Vector3.new(-30, 0, 10)
 	)
 end
 
 --[[
-	The forest, in species bands: pines crown the high tier, broadleaf
-	hugs the town's north and west walls, scatter fills the low tier
-	and its rim, and understory props thicken the floor everywhere.
-	Deterministic jitter keeps it organic but identical every server.
+	The forest, three times denser: pine rings crown the hill,
+	broadleaf surrounds the town and fills the lawns, groves cluster
+	on the knolls, understory clumps and grass tufts thicken every
+	floor. Deterministic jitter keeps it organic and identical on
+	every server.
 ]]
 local function buildForest(parent: Instance)
 	local PINES = {
@@ -1849,23 +1965,30 @@ local function buildForest(parent: Instance)
 		return Vector3.new(rng:NextNumber(-amount, amount), 0, rng:NextNumber(-amount, amount))
 	end
 
-	-- Pine band: two arcs around the high tier, clear of the tree,
-	-- pond, and stair.
+	-- Pine crown: two rings on the main hill lobe plus one on the
+	-- back lobe, clear of the tree, pond, stair, and falls line.
 	local pineIndex = 0
 	for _, arc in ipairs({
 		{
 			center = Vector3.new(-145, TIER_HIGH, -130),
-			radius = 72,
-			fromAngle = 100,
-			toAngle = 320,
-			count = 10,
+			radius = 52,
+			fromAngle = 110,
+			toAngle = 330,
+			count = 9,
+		},
+		{
+			center = Vector3.new(-145, TIER_HIGH, -130),
+			radius = 40,
+			fromAngle = 130,
+			toAngle = 300,
+			count = 6,
 		},
 		{
 			center = Vector3.new(-100, TIER_HIGH, -195),
-			radius = 42,
-			fromAngle = 120,
-			toAngle = 300,
-			count = 6,
+			radius = 30,
+			fromAngle = 100,
+			toAngle = 320,
+			count = 7,
 		},
 	}) do
 		for arcStep = 0, arc.count - 1 do
@@ -1878,52 +2001,20 @@ local function buildForest(parent: Instance)
 				CENTER
 					+ arc.center
 					+ Vector3.new(math.cos(angle) * arc.radius, 0, math.sin(angle) * arc.radius)
-					+ jitter(6),
-				13 + (pineIndex % 4),
+					+ jitter(4),
+				14 + (pineIndex % 5),
 				pineIndex * 53,
 				fallbackTree
 			)
 		end
 	end
 
-	-- Broadleaf hugging the town's west and north walls.
+	-- Broadleaf lawns: scatter across the low tier, groves on the
+	-- knolls, and the rim ring at explicit per-tier heights.
 	local leafIndex = 0
-	for wallStep = 0, 5 do
-		leafIndex += 1
-		placeProp(
-			parent,
-			naturePath(BROADLEAF[leafIndex % #BROADLEAF + 1]),
-			CENTER + Vector3.new(-45 + rng:NextNumber(-5, 3), TIER_MID, -150 + wallStep * 30),
-			11 + (leafIndex % 4),
-			leafIndex * 77,
-			fallbackTree
-		)
-	end
-	for wallStep = 0, 3 do
-		leafIndex += 1
-		placeProp(
-			parent,
-			naturePath(BROADLEAF[leafIndex % #BROADLEAF + 1]),
-			CENTER + Vector3.new(-10 + wallStep * 40, TIER_MID, -180 + rng:NextNumber(-4, 4)),
-			12 + (leafIndex % 3),
-			leafIndex * 77,
-			fallbackTree
-		)
-	end
-	leafIndex += 1
-	placeProp(
-		parent,
-		naturePath("Rooted Tree"),
-		CENTER + Vector3.new(150, TIER_MID, -160),
-		13,
-		40,
-		fallbackTree
-	)
-
-	-- Low tier scatter and rim ring.
 	for _, spot in ipairs({
-		Vector3.new(-150, 0, 40),
-		Vector3.new(-170, 0, 120),
+		Vector3.new(-150, 4, 40),
+		Vector3.new(-170, 3, 120),
 		Vector3.new(-130, 0, 190),
 		Vector3.new(135, 0, 70),
 		Vector3.new(185, 0, 60),
@@ -1932,19 +2023,48 @@ local function buildForest(parent: Instance)
 		Vector3.new(-20, 0, 120),
 		Vector3.new(95, 0, 55),
 		Vector3.new(-125, 0, 65),
+		Vector3.new(-95, 0, 20),
+		Vector3.new(-140, 2, -20),
+		Vector3.new(175, 0, 20),
+		Vector3.new(160, 0, 175),
+		Vector3.new(60, 0, 165),
+		Vector3.new(-180, 0, 90),
 	}) do
 		leafIndex += 1
 		placeProp(
 			parent,
 			naturePath(BROADLEAF[leafIndex % #BROADLEAF + 1]),
-			CENTER + spot + jitter(7),
-			11 + (leafIndex % 4),
+			CENTER + spot + jitter(6),
+			12 + (leafIndex % 5),
 			leafIndex * 31,
 			fallbackTree
 		)
 	end
-	-- Rim ring: explicit spots, each at its tier's height, so no tree
-	-- spawns buried in the plateau or hill.
+
+	-- Knoll groves: three trees hugging each of the bigger knolls.
+	for _, knollCenter in ipairs({
+		Vector3.new(-150, 5, 60),
+		Vector3.new(-170, 4, 150),
+		Vector3.new(110, 4, 180),
+	}) do
+		for groveStep = 0, 2 do
+			local angle = groveStep / 3 * math.pi * 2 + 0.6
+			leafIndex += 1
+			placeProp(
+				parent,
+				naturePath(BROADLEAF[leafIndex % #BROADLEAF + 1]),
+				CENTER
+					+ knollCenter
+					+ Vector3.new(math.cos(angle) * 14, -2, math.sin(angle) * 14)
+					+ jitter(4),
+				13 + (leafIndex % 4),
+				leafIndex * 77,
+				fallbackTree
+			)
+		end
+	end
+
+	-- Rim ring: explicit spots, each at its tier's height.
 	for rimStep, rimSpot in ipairs({
 		Vector3.new(210, 0, 85),
 		Vector3.new(144, 0, 200),
@@ -1953,8 +2073,8 @@ local function buildForest(parent: Instance)
 		Vector3.new(-196, 0, 127),
 		Vector3.new(-225, 0, 20),
 		Vector3.new(-160, TIER_HIGH, -120),
-		Vector3.new(-22, TIER_MID, -174),
-		Vector3.new(150, TIER_MID, -178),
+		Vector3.new(-22, 0, -184),
+		Vector3.new(150, 0, -185),
 		Vector3.new(196, 0, -47),
 	}) do
 		leafIndex += 1
@@ -1965,8 +2085,8 @@ local function buildForest(parent: Instance)
 					then PINES[rimStep % #PINES + 1]
 					else BROADLEAF[leafIndex % #BROADLEAF + 1]
 			),
-			CENTER + rimSpot + jitter(6),
-			12 + (rimStep % 4),
+			CENTER + rimSpot + jitter(5),
+			13 + (rimStep % 4),
 			rimStep * 47,
 			fallbackTree
 		)
@@ -1997,9 +2117,16 @@ local function buildForest(parent: Instance)
 		260,
 		fallbackTree
 	)
+	placeProp(
+		parent,
+		naturePath("Rooted Tree"),
+		CENTER + Vector3.new(150, 0, -160),
+		13,
+		40,
+		fallbackTree
+	)
 
-	-- Understory: bushes, flowers, mushrooms, rocks, logs, stumps, and
-	-- a bamboo cluster near the lower falls.
+	-- Understory clumps: three props around each anchor.
 	local UNDERSTORY = {
 		{ prop = "Bush", height = 3 },
 		{ prop = "Bush 2", height = 3 },
@@ -2022,7 +2149,7 @@ local function buildForest(parent: Instance)
 		{ prop = "Round Plant", height = 2.4 },
 		{ prop = "Plant", height = 2.4 },
 	}
-	local understorySpots = {
+	local understoryAnchors = {
 		Vector3.new(-120, 0, 150),
 		Vector3.new(-150, 0, 90),
 		Vector3.new(-100, 0, 45),
@@ -2032,26 +2159,53 @@ local function buildForest(parent: Instance)
 		Vector3.new(175, 0, 110),
 		Vector3.new(110, 0, 165),
 		Vector3.new(-165, TIER_HIGH, -90),
-		Vector3.new(-190, TIER_HIGH, -140),
-		Vector3.new(-120, TIER_HIGH, -190),
-		Vector3.new(-70, TIER_HIGH, -145),
-		Vector3.new(-45, TIER_MID, -35),
-		Vector3.new(-40, TIER_MID, -110),
-		Vector3.new(150, TIER_MID, -125),
-		Vector3.new(20, TIER_MID, -185),
-		Vector3.new(90, TIER_MID, -190),
+		Vector3.new(-175, TIER_HIGH, -140),
+		Vector3.new(-120, TIER_HIGH, -180),
+		Vector3.new(-95, TIER_HIGH, -145),
 		Vector3.new(-95, 0, 230),
 		Vector3.new(80, 0, 230),
 		Vector3.new(-200, 0, 60),
+		Vector3.new(185, 0, 90),
 	}
-	for spotIndex, spot in ipairs(understorySpots) do
-		local pick = UNDERSTORY[(spotIndex * 7) % #UNDERSTORY + 1]
+	for anchorIndex, anchor in ipairs(understoryAnchors) do
+		for clumpStep = 0, 2 do
+			local pick = UNDERSTORY[(anchorIndex * 7 + clumpStep * 3) % #UNDERSTORY + 1]
+			placeProp(
+				parent,
+				naturePath(pick.prop),
+				CENTER + anchor + jitter(8),
+				pick.height,
+				anchorIndex * 83 + clumpStep * 40
+			)
+		end
+	end
+
+	-- Grass tufts across every lawn, snapped to the tier under them.
+	local function tierHeight(offset: Vector3): number
+		if offset.X > -54 and offset.X < 164 and offset.Z > -174 and offset.Z < 34 then
+			return TIER_MID
+		end
+		local flatOffset = Vector3.new(offset.X, 0, offset.Z)
+		if
+			(flatOffset - Vector3.new(-145, 0, -130)).Magnitude < 68
+			or (flatOffset - Vector3.new(-100, 0, -195)).Magnitude < 44
+		then
+			return TIER_HIGH
+		end
+		return 0
+	end
+
+	for tuftIndex = 0, 23 do
+		local angle = tuftIndex / 24 * math.pi * 2
+		local radius = 90 + (tuftIndex % 5) * 26
+		local offset = Vector3.new(math.cos(angle) * radius, 0, 40 + math.sin(angle) * radius)
+			+ jitter(10)
 		placeProp(
 			parent,
-			naturePath(pick.prop),
-			CENTER + spot + jitter(5),
-			pick.height,
-			spotIndex * 83
+			naturePath(if tuftIndex % 2 == 0 then "Tall Grass" else "Grass"),
+			CENTER + offset + Vector3.new(0, tierHeight(offset), 0),
+			1.6,
+			tuftIndex * 29
 		)
 	end
 
@@ -2085,7 +2239,7 @@ local function startAmbientLoop()
 			local position = CENTER
 				+ Vector3.new(
 					math.cos(angle) * 380,
-					40 + math.sin(elapsed * 0.35) * 6,
+					60 + math.sin(elapsed * 0.35) * 6,
 					math.sin(angle) * 380
 				)
 			local tangent = Vector3.new(-math.sin(angle), 0, math.cos(angle))
@@ -2257,6 +2411,40 @@ local function buildTdsIsland(modelsFolder: Instance)
 	islandFolder.Parent = Workspace
 end
 
+--[[
+	The safety net: a vast invisible catcher far under the island.
+	Sky-well rides, bridge slips, and rim tumbles all land here and
+	step back onto the pad instead of falling forever.
+]]
+local function buildSafetyNet(parent: Instance)
+	local net = createPart({
+		Name = "SafetyNet",
+		Size = Vector3.new(1500, 4, 1500),
+		Position = CENTER + Vector3.new(0, -170, 0),
+		Transparency = 1,
+		CanCollide = false,
+		Parent = parent,
+	})
+
+	local lastCatch: { [Player]: number } = {}
+	net.Touched:Connect(function(hit)
+		local character = hit.Parent
+		if character == nil then
+			return
+		end
+		local player = game:GetService("Players"):GetPlayerFromCharacter(character)
+		if player == nil then
+			return
+		end
+		local now = os.clock()
+		if lastCatch[player] ~= nil and now - lastCatch[player] < 3 then
+			return
+		end
+		lastCatch[player] = now
+		character:PivotTo(CFrame.new(PAD_POSITION + Vector3.new(0, 4, 0)))
+	end)
+end
+
 -- Pivot a player's character onto the pad; the client cutscene lifts
 -- them into the sky itself, so no one can fall out of the world here.
 local function placeAtPad(player: Player): boolean
@@ -2347,7 +2535,8 @@ function HubService.start()
 	buildForest(hubFolder)
 
 	-- The sky whale spawns on its orbit; the ambient loop flies it.
-	skyWhale = placeProp(hubFolder, seaPath("Whale"), CENTER + Vector3.new(380, 40, 0), 24, 90)
+	buildSafetyNet(hubFolder)
+	skyWhale = placeProp(hubFolder, seaPath("Whale"), CENTER + Vector3.new(380, 60, 0), 24, 90)
 	startAmbientLoop()
 
 	-- The previous separate TDS island, preserved behind its flag.
