@@ -297,6 +297,19 @@ local GameConfig = {
 		skyDropHeight = 220,
 	},
 
+	-- The TDS town: the bought map floating as its own island in the
+	-- terrace's view, fully walkable, reached through any portal.
+	tdsIsland = {
+		centerX = 240,
+		surfaceY = 1150,
+		centerZ = -640,
+		-- The map is scaled until its widest side spans this many studs.
+		footprint = 380,
+		-- The arrival strip faces the Main Island; the pad and return
+		-- portal sit on this edge, clear of the scenery.
+		padOffsetZ = -170,
+	},
+
 	-- The hub's prize wheel: one free spin per cooldown, extra spins
 	-- sold as a developer product. Weights are relative; the list order
 	-- is the order of the bubbles around the wheel.

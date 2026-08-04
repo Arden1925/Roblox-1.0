@@ -63,8 +63,9 @@ end
 
 --[[
 	Wired as RequestTeleport.OnServerInvoke. Returns success plus a
-	message the client shows verbatim. Index 0 is the Main Island, which
-	everyone may visit; real worlds still gate on the reached record.
+	message the client shows verbatim. Index 0 is the Main Island and
+	index -1 the TDS town island, which everyone may visit; real worlds
+	still gate on the reached record.
 ]]
 function WorldService.attemptTeleport(player: Player, worldIndex: any): (boolean, string)
 	if worldIndex == 0 then
@@ -77,6 +78,18 @@ function WorldService.attemptTeleport(player: Player, worldIndex: any): (boolean
 		character:PivotTo(CFrame.new(hub.centerX, hub.surfaceY + 5, hub.centerZ))
 
 		return true, "Welcome home -- the Main Island!"
+	end
+
+	if worldIndex == -1 then
+		local character = player.Character
+		if character == nil then
+			return false, "You need a character to teleport."
+		end
+
+		local tds = GameConfig.tdsIsland
+		character:PivotTo(CFrame.new(tds.centerX, tds.surfaceY + 5, tds.centerZ + tds.padOffsetZ))
+
+		return true, "Welcome to TDS Town!"
 	end
 
 	if typeof(worldIndex) ~= "number" or GameConfig.worlds[worldIndex] == nil then
