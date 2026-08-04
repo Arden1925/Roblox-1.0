@@ -1431,42 +1431,8 @@ end
 ]]
 local function createWorldDecor(parent: Instance, worldIndex: number, minZ: number)
 	if worldIndex == 1 then
-		for _, spot in ipairs({ { -36, 60 }, { 34, 100 }, { -30, 170 }, { 38, 150 } }) do
-			createPart({
-				Name = "TreeTrunk",
-				Shape = Enum.PartType.Cylinder,
-				Size = Vector3.new(7, 2, 2),
-				CFrame = CFrame.new(spot[1], WorldLayout.baseY + 3.5, minZ + spot[2])
-					* CFrame.Angles(0, 0, math.rad(90)),
-				Color = Color3.fromRGB(110, 80, 48),
-				Material = Enum.Material.Wood,
-				Parent = parent,
-			})
-
-			createPart({
-				Name = "TreeLeaves",
-				Shape = Enum.PartType.Ball,
-				Size = Vector3.new(7, 7, 7),
-				Position = Vector3.new(spot[1], WorldLayout.baseY + 9, minZ + spot[2]),
-				Color = Color3.fromRGB(88, 190, 60),
-				Material = Enum.Material.Grass,
-				CanCollide = false,
-				Parent = parent,
-			})
-		end
-
-		for _, spot in ipairs({ { -20, 35 }, { 24, 70 }, { -8, 130 }, { 12, 165 } }) do
-			createPart({
-				Name = "Flower",
-				Shape = Enum.PartType.Ball,
-				Size = Vector3.new(1, 1, 1),
-				Position = Vector3.new(spot[1], WorldLayout.baseY + 0.5, minZ + spot[2]),
-				Color = Color3.fromRGB(255, 121, 198),
-				Material = Enum.Material.Neon,
-				CanCollide = false,
-				Parent = parent,
-			})
-		end
+		-- The meadow's trees and flowers are real Nature-pack models
+		-- now, placed by SceneryService at these same spots.
 
 		-- First boulder: gentle requirement, coins waiting behind it.
 		createBoulder(parent, Vector3.new(-34, 0, minZ + 118), 25, Color3.fromRGB(120, 224, 76))
@@ -1519,16 +1485,8 @@ local function createWorldDecor(parent: Instance, worldIndex: number, minZ: numb
 			})
 		end
 
-		for _, spot in ipairs({ { -40, 70 }, { 40, 150 } }) do
-			createPart({
-				Name = "FoundryPillar",
-				Size = Vector3.new(4, 18, 4),
-				Position = Vector3.new(spot[1], WorldLayout.baseY + 9, minZ + spot[2]),
-				Color = Color3.fromRGB(45, 45, 45),
-				Material = Enum.Material.Basalt,
-				Parent = parent,
-			})
-		end
+		-- The foundry's freestanding pillars became cave-pack rock
+		-- formations, placed by SceneryService at these same spots.
 	elseif worldIndex == 4 then
 		for _, spot in ipairs({ { -30, 50, 14 }, { 32, 90, 18 }, { -26, 160, 22 } }) do
 			for puffOffset = -3, 3, 3 do

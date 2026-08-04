@@ -95,6 +95,12 @@ end
 -- The character scale the owner is currently rendered at, floored so
 -- shrunk players keep readable (not microscopic) pets.
 local function characterScaleFor(player: Player): number
+	-- On the Main Island everyone is rendered at base size, so their
+	-- pets match.
+	if player:GetAttribute("InHub") == true then
+		return 1
+	end
+
 	local currentSize = player:GetAttribute("CurrentSize")
 	if typeof(currentSize) ~= "number" then
 		return 1
@@ -598,8 +604,12 @@ function PetService.initializePlayer(
 		rebuildFollowers(player)
 	end
 
-	-- Followers grow and shrink with their owner.
+	-- Followers grow and shrink with their owner, and drop to base
+	-- size alongside them on the Main Island.
 	player:GetAttributeChangedSignal("CurrentSize"):Connect(function()
+		rescaleFollowers(player)
+	end)
+	player:GetAttributeChangedSignal("InHub"):Connect(function()
 		rescaleFollowers(player)
 	end)
 

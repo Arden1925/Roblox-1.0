@@ -412,6 +412,10 @@ function UiBuilder.iconButton(
 		BorderSizePixel = 0,
 		Font = CARTOON_FONT,
 		Text = icon,
+		-- Emoji icons ignore this, but text-presentation glyphs (the
+		-- settings gear) render in TextColor3 -- and a TextButton's
+		-- default is black, which sank the gear into its gray button.
+		TextColor3 = Color3.fromRGB(255, 255, 255),
 		TextSize = 26,
 		Parent = container,
 	}) :: TextButton

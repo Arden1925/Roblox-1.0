@@ -137,6 +137,19 @@ local function publishState(player: Player, state: PlayerState)
 	end
 end
 
+-- Whether the character currently stands on the Main Island. Altitude
+-- is the one test every entry route shares -- portal, landing cutscene,
+-- teleport -- and no world geometry reaches within 200 studs of it.
+local function isInHub(player: Player): boolean
+	local character = player.Character
+	local rootPart = if character ~= nil then character:FindFirstChild("HumanoidRootPart") else nil
+	if rootPart == nil then
+		return false
+	end
+
+	return rootPart.Position.Y > GameConfig.hub.surfaceY - 200
+end
+
 local function applyCharacterScale(player: Player, state: PlayerState)
 	local character = player.Character
 	if character == nil then
@@ -149,6 +162,19 @@ local function applyCharacterScale(player: Player, state: PlayerState)
 	end
 
 	local scale = SizeFormula.scaleForSize(state.currentSize)
+
+	-- The hub is a social space: everyone walks it at base size, and
+	-- their true size comes back the moment they leave. Only the
+	-- rendered scale changes; stored size, growth, and the HUD keep
+	-- reporting the real numbers throughout. The InHub attribute lets
+	-- PetService shrink followers to match.
+	local inHub = isInHub(player)
+	if player:GetAttribute("InHub") ~= inHub then
+		player:SetAttribute("InHub", inHub)
+	end
+	if inHub then
+		scale = 1
+	end
 
 	-- Speed and jump are cheap to set and must react immediately to the
 	-- slider and timed boosts, so they update every tick even when the

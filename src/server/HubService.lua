@@ -25,7 +25,8 @@ local WOOD_COLOR = Color3.fromRGB(160, 118, 70)
 local PLANK_COLOR = Color3.fromRGB(196, 152, 98)
 local WHITE_COLOR = Color3.fromRGB(245, 246, 250)
 local GOLD_COLOR = Color3.fromRGB(253, 203, 110)
-local PORTAL_COLOR = Color3.fromRGB(0, 206, 201)
+-- Portal-gun green, matching MapGenerator's world portals exactly.
+local PORTAL_GREEN = Color3.fromRGB(97, 255, 66)
 local ROOF_COLOR = Color3.fromRGB(214, 108, 76)
 local SIGN_TEXT_COLOR = Color3.fromRGB(255, 255, 255)
 
@@ -118,6 +119,204 @@ local function makeInert(container: Model)
 	end
 end
 
+-- Set once in start(); every decoration below prefers a real model
+-- from here and falls back to simple part-work when it is missing.
+local packModelsFolder: Instance? = nil
+
+type PropPath = { string | number }
+
+local function naturePath(propName: string): PropPath
+	return { "Low_Poly_Nature_Asset_Pack", "Low Poly Nature Asset Pack | Destiny Tech", propName }
+end
+
+local function cityPath(category: string, propName: string): PropPath
+	return { "City_Asset_Pack_2026", "Models", category, propName }
+end
+
+local function findProp(path: PropPath): Instance?
+	local current = packModelsFolder
+
+	for _, segment in ipairs(path) do
+		if current == nil then
+			return nil
+		end
+
+		current = if typeof(segment) == "number"
+			then current:GetChildren()[segment]
+			else current:FindFirstChild(segment)
+	end
+
+	return current
+end
+
+-- A PointLight on a placed prop's highest part, so pack lampposts
+-- actually light the paths at night the way the old part lamps did.
+local function addTopLight(container: Model)
+	local highest: BasePart? = nil
+	for _, descendant in ipairs(container:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			if highest == nil or descendant.Position.Y > highest.Position.Y then
+				highest = descendant
+			end
+		end
+	end
+
+	if highest ~= nil then
+		local light = Instance.new("PointLight")
+		light.Color = GOLD_COLOR
+		light.Brightness = 1.4
+		light.Range = 22
+		light.Parent = highest
+	end
+end
+
+--[[
+	The one decoration entry point: clones the pack model at the path,
+	scales it to the target height, and stands it bottom-down at the
+	position. When the model is missing (Assets not synced, or a prop
+	renamed), the optional fallback builds simple part-work at the same
+	spot instead -- so the island composes identically either way, and
+	upgrading any piece later means editing one path string, not
+	geometry. Returns the placed model, or nil when the fallback ran.
+]]
+local function placeProp(
+	parent: Instance,
+	path: PropPath,
+	position: Vector3,
+	height: number,
+	yaw: number?,
+	fallback: ((Instance, Vector3, number) -> ())?
+): Model?
+	local template = findProp(path)
+	if template == nil then
+		if fallback ~= nil then
+			fallback(parent, position, height)
+		elseif packModelsFolder ~= nil then
+			warn("HubService: missing prop " .. table.concat(path, "/"))
+		end
+
+		return nil
+	end
+
+	local container = Instance.new("Model")
+	container.Name = template.Name
+
+	local clone = template:Clone()
+	clone.Parent = container
+	makeInert(container)
+
+	local extents = container:GetExtentsSize()
+	if extents.Y < 0.05 then
+		container:Destroy()
+		return nil
+	end
+
+	container:PivotTo(container:GetPivot() * CFrame.Angles(0, math.rad(yaw or 0), 0))
+	container:ScaleTo(height / extents.Y)
+
+	local boxCFrame, boxSize = container:GetBoundingBox()
+	local target = position + Vector3.new(0, boxSize.Y / 2, 0)
+	container:PivotTo(container:GetPivot() + (target - boxCFrame.Position))
+	container.Parent = parent
+
+	return container
+end
+
+-- Fallbacks: deliberately simple, clearly placeholder shapes that keep
+-- the composition intact until the matching pack model syncs in.
+local function fallbackTree(parent: Instance, position: Vector3, height: number)
+	createPart({
+		Name = "FallbackTreeTrunk",
+		Size = Vector3.new(2, height * 0.6, 2),
+		Position = position + Vector3.new(0, height * 0.3, 0),
+		Color = WOOD_COLOR,
+		Material = Enum.Material.Wood,
+		Parent = parent,
+	})
+	createPart({
+		Name = "FallbackTreeLeaves",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.new(height * 0.55, height * 0.5, height * 0.55),
+		Position = position + Vector3.new(0, height * 0.75, 0),
+		Color = Color3.fromRGB(88, 178, 78),
+		Material = Enum.Material.Grass,
+		CanCollide = false,
+		Parent = parent,
+	})
+end
+
+local function fallbackLamp(parent: Instance, position: Vector3, height: number)
+	createPart({
+		Name = "FallbackLampPole",
+		Size = Vector3.new(0.7, height - 2, 0.7),
+		Position = position + Vector3.new(0, (height - 2) / 2, 0),
+		Color = Color3.fromRGB(62, 74, 96),
+		Material = Enum.Material.Metal,
+		CanCollide = false,
+		Parent = parent,
+	})
+	local globe = createPart({
+		Name = "FallbackLampGlobe",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.new(2, 2, 2),
+		Position = position + Vector3.new(0, height - 1, 0),
+		Color = GOLD_COLOR,
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = parent,
+	})
+	local light = Instance.new("PointLight")
+	light.Color = GOLD_COLOR
+	light.Brightness = 1.4
+	light.Range = 22
+	light.Parent = globe
+end
+
+local function fallbackBench(parent: Instance, position: Vector3, height: number)
+	createPart({
+		Name = "FallbackBenchSeat",
+		Size = Vector3.new(8, 0.8, 2.4),
+		Position = position + Vector3.new(0, height * 0.5, 0),
+		Color = PLANK_COLOR,
+		Material = Enum.Material.WoodPlanks,
+		Parent = parent,
+	})
+	for _, legOffset in ipairs({ -3.2, 3.2 }) do
+		createPart({
+			Name = "FallbackBenchLeg",
+			Size = Vector3.new(0.8, height * 0.5, 2.2),
+			Position = position + Vector3.new(legOffset, height * 0.25, 0),
+			Color = WOOD_COLOR,
+			Material = Enum.Material.Wood,
+			CanCollide = false,
+			Parent = parent,
+		})
+	end
+end
+
+-- A cobbled walking path between two ground points: one rotated slab,
+-- slightly proud of the grass so routes read from the air.
+local function buildPath(parent: Instance, fromOffset: Vector3, toOffset: Vector3, width: number)
+	local fromPosition = CENTER + fromOffset
+	local toPosition = CENTER + toOffset
+	local span = toPosition - fromPosition
+	local length = span.Magnitude
+	if length < 1 then
+		return
+	end
+
+	local midpoint = fromPosition + span / 2 + Vector3.new(0, 0.12, 0)
+	createPart({
+		Name = "HubPath",
+		Size = Vector3.new(width, 0.25, length),
+		CFrame = CFrame.lookAt(midpoint, midpoint + span),
+		Color = Color3.fromRGB(178, 168, 152),
+		Material = Enum.Material.Cobblestone,
+		CanCollide = false,
+		Parent = parent,
+	})
+end
+
 local function buildBase(parent: Instance)
 	createPart({
 		Name = "IslandGrass",
@@ -207,8 +406,37 @@ local function buildBase(parent: Instance)
 		end
 	end
 
-	-- Lampposts around the plaza so the hub reads warm at night.
-	for _, lampOffset in ipairs({
+	-- The stone plaza ring around the landing pad: the island's heart,
+	-- with cobbled paths running out to every district so the layout
+	-- reads as a village green instead of a bare plain.
+	createPart({
+		Name = "PlazaRing",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.4, 58, 58),
+		CFrame = CFrame.new(PAD_POSITION + Vector3.new(0, 0.12, 0))
+			* CFrame.Angles(0, 0, math.rad(90)),
+		Color = Color3.fromRGB(196, 188, 172),
+		Material = Enum.Material.Cobblestone,
+		CanCollide = false,
+		Parent = parent,
+	})
+
+	local padOffset = PAD_POSITION - CENTER
+	for _, pathSpec in ipairs({
+		{ target = Vector3.new(0, 0, 80), width = 8 }, -- portal gate
+		{ target = Vector3.new(-118, 0, 55), width = 6 }, -- prize wheel
+		{ target = Vector3.new(-45, 0, 75), width = 6 }, -- shop stall
+		{ target = Vector3.new(28, 0, 62), width = 5 }, -- group chest
+		{ target = Vector3.new(62, 0, -95), width = 6 }, -- house
+		{ target = Vector3.new(-85, 0, -40), width = 6 }, -- town
+		{ target = Vector3.new(85, 0, -55), width = 6 }, -- egg garden
+		{ target = Vector3.new(0, 0, 110), width = 10 }, -- terrace
+	}) do
+		buildPath(parent, padOffset, pathSpec.target, pathSpec.width)
+	end
+
+	-- Streetlamps from the city pack light the path junctions.
+	for lampIndex, lampOffset in ipairs({
 		Vector3.new(-25, 0, 45),
 		Vector3.new(25, 0, 45),
 		Vector3.new(-35, 0, -10),
@@ -216,67 +444,83 @@ local function buildBase(parent: Instance)
 		Vector3.new(0, 0, -60),
 		Vector3.new(-90, 0, 60),
 	}) do
-		local base = CENTER + lampOffset
-		createPart({
-			Name = "LampPole",
-			Size = Vector3.new(0.7, 9, 0.7),
-			Position = base + Vector3.new(0, 4.5, 0),
-			Color = Color3.fromRGB(62, 74, 96),
-			Material = Enum.Material.Metal,
-			CanCollide = false,
-			Parent = parent,
-		})
-		local globe = createPart({
-			Name = "LampGlobe",
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.new(2, 2, 2),
-			Position = base + Vector3.new(0, 10, 0),
-			Color = GOLD_COLOR,
-			Material = Enum.Material.Neon,
-			CanCollide = false,
-			Parent = parent,
-		})
-		local light = Instance.new("PointLight")
-		light.Color = GOLD_COLOR
-		light.Brightness = 1.4
-		light.Range = 22
-		light.Parent = globe
+		local lampName = if lampIndex % 2 == 0 then "Round Street Lamp 1" else "Street Lamp 1"
+		local lamp = placeProp(
+			parent,
+			cityPath("City Lamps", lampName),
+			CENTER + lampOffset,
+			10,
+			lampIndex * 60,
+			fallbackLamp
+		)
+		if lamp ~= nil then
+			addTopLight(lamp)
+		end
 	end
 
-	-- Simple part-built trees keep the cozy park feel without another
-	-- asset pack.
+	-- A tree line from the nature pack: varied species around the
+	-- districts, denser toward the back edge.
 	for _, treeSpec in ipairs({
-		{ offset = Vector3.new(-45, 0, 70), height = 11 },
-		{ offset = Vector3.new(50, 0, 66), height = 9 },
-		{ offset = Vector3.new(-115, 0, -20), height = 12 },
-		{ offset = Vector3.new(115, 0, 10), height = 10 },
-		{ offset = Vector3.new(20, 0, -95), height = 12 },
+		{ offset = Vector3.new(-45, 0, 62), prop = "Tree", height = 12 },
+		{ offset = Vector3.new(52, 0, 66), prop = "Birch Tree", height = 12 },
+		{ offset = Vector3.new(-115, 0, -20), prop = "Tall Pine Tree", height = 15 },
+		{ offset = Vector3.new(115, 0, 10), prop = "Tall Tree", height = 14 },
+		{ offset = Vector3.new(24, 0, -95), prop = "Double Tree", height = 13 },
+		{ offset = Vector3.new(-120, 0, 95), prop = "Pine Tree", height = 12 },
+		{ offset = Vector3.new(120, 0, 88), prop = "Tree 2", height = 11 },
+		{ offset = Vector3.new(-40, 0, -125), prop = "Tall Pine Tree 2", height = 15 },
+		{ offset = Vector3.new(118, 0, -95), prop = "Squared Tree", height = 11 },
 	}) do
-		local base = CENTER + treeSpec.offset
-		createPart({
-			Name = "TreeTrunk",
-			Size = Vector3.new(2, treeSpec.height, 2),
-			Position = base + Vector3.new(0, treeSpec.height / 2, 0),
-			Color = WOOD_COLOR,
-			Material = Enum.Material.Wood,
-			Parent = parent,
-		})
-		for blobIndex, blobOffset in ipairs({
-			Vector3.new(0, treeSpec.height + 2.5, 0),
-			Vector3.new(2.4, treeSpec.height + 0.8, 1),
-			Vector3.new(-2, treeSpec.height + 1, -1.6),
-		}) do
-			createPart({
-				Name = "TreeLeaves" .. blobIndex,
-				Shape = Enum.PartType.Ball,
-				Size = Vector3.new(7 - blobIndex, 6 - blobIndex, 7 - blobIndex),
-				Position = base + blobOffset,
-				Color = Color3.fromRGB(88, 178, 78),
-				Material = Enum.Material.Grass,
-				CanCollide = false,
-				Parent = parent,
-			})
+		placeProp(
+			parent,
+			naturePath(treeSpec.prop),
+			CENTER + treeSpec.offset,
+			treeSpec.height,
+			(treeSpec.offset.X + treeSpec.offset.Z) * 7,
+			fallbackTree
+		)
+	end
+
+	-- The great tree: one oversized landmark between the districts, a
+	-- meeting spot you can see from anywhere on the island.
+	local greatTree = placeProp(
+		parent,
+		naturePath("Rooted Tree"),
+		CENTER + Vector3.new(0, 0, -95),
+		26,
+		0,
+		fallbackTree
+	)
+	if greatTree ~= nil then
+		local trunk = greatTree:FindFirstChildWhichIsA("BasePart", true)
+		if trunk ~= nil then
+			addBillboard(trunk, "THE GREAT TREE", GRASS_COLOR, 20)
 		end
+	end
+
+	-- Understory: bushes, flowers, and rocks scattered off the paths so
+	-- the grass never reads as empty.
+	for scatterIndex, scatterSpec in ipairs({
+		{ offset = Vector3.new(-60, 0, 20), prop = "Bush", height = 3 },
+		{ offset = Vector3.new(58, 0, 24), prop = "Bush 2", height = 3 },
+		{ offset = Vector3.new(-18, 0, -40), prop = "Flower 2", height = 2 },
+		{ offset = Vector3.new(20, 0, -36), prop = "Flower 5", height = 2 },
+		{ offset = Vector3.new(-95, 0, 20), prop = "Big Rock", height = 4 },
+		{ offset = Vector3.new(96, 0, 40), prop = "Rock 1", height = 3 },
+		{ offset = Vector3.new(44, 0, -60), prop = "Tall Bush Flower", height = 3.5 },
+		{ offset = Vector3.new(-52, 0, -78), prop = "Mushroom", height = 2.5 },
+		{ offset = Vector3.new(12, 0, 96), prop = "Flower 8", height = 2 },
+		{ offset = Vector3.new(-14, 0, 98), prop = "Flower 4", height = 2 },
+		{ offset = Vector3.new(70, 0, 8), prop = "Round Plant", height = 2.5 },
+		{ offset = Vector3.new(-70, 0, 8), prop = "Plant", height = 2.5 },
+	}) do
+		placeProp(
+			parent,
+			naturePath(scatterSpec.prop),
+			CENTER + scatterSpec.offset,
+			scatterSpec.height,
+			scatterIndex * 47
+		)
 	end
 end
 
@@ -354,31 +598,34 @@ local function buildTerrace(parent: Instance)
 		})
 	end
 
-	for _, benchOffset in ipairs({ -60, -20, 20, 60 }) do
-		createPart({
-			Name = "TerraceBenchSeat",
-			Size = Vector3.new(8, 0.8, 2.4),
-			Position = Vector3.new(CENTER.X + benchOffset, hub.surfaceY + 1.6, TERRACE_EDGE_Z - 10),
-			Color = PLANK_COLOR,
-			Material = Enum.Material.WoodPlanks,
-			Parent = parent,
-		})
-		for _, legOffset in ipairs({ -3.2, 3.2 }) do
-			createPart({
-				Name = "TerraceBenchLeg",
-				Size = Vector3.new(0.8, 1.2, 2.2),
-				Position = Vector3.new(
-					CENTER.X + benchOffset + legOffset,
-					hub.surfaceY + 0.6,
-					TERRACE_EDGE_Z - 10
-				),
-				Color = WOOD_COLOR,
-				Material = Enum.Material.Wood,
-				CanCollide = false,
-				Parent = parent,
-			})
-		end
+	-- Real benches from the city pack face the view; a parasol cafe
+	-- corner anchors the west end of the deck.
+	for benchIndex, benchOffset in ipairs({ -60, -20, 20, 60 }) do
+		local benchName = if benchIndex % 2 == 0 then "Wooden Bench 1" else "Bench 2"
+		placeProp(
+			parent,
+			cityPath("Benches & Picnic", benchName),
+			Vector3.new(CENTER.X + benchOffset, hub.surfaceY + 0.6, TERRACE_EDGE_Z - 10),
+			3,
+			180,
+			fallbackBench
+		)
 	end
+
+	placeProp(
+		parent,
+		cityPath("Restaurant Related", "Outside Parasol Table"),
+		Vector3.new(CENTER.X - 80, hub.surfaceY + 0.6, TERRACE_EDGE_Z - 18),
+		7,
+		30
+	)
+	placeProp(
+		parent,
+		cityPath("Benches & Picnic", "Picnic Table"),
+		Vector3.new(CENTER.X + 82, hub.surfaceY + 0.6, TERRACE_EDGE_Z - 18),
+		3.5,
+		-25
+	)
 
 	-- Telescopes sell the "look out there" idea even before the other
 	-- islands exist.
@@ -428,11 +675,11 @@ end
 local function buildPortal(parent: Instance)
 	local base = PAD_POSITION + Vector3.new(0, 0, 60)
 
-	for _, pillarOffset in ipairs({ -6, 6 }) do
+	for _, pillarOffset in ipairs({ -8, 8 }) do
 		createPart({
 			Name = "PortalPillar",
-			Size = Vector3.new(2, 14, 2),
-			Position = base + Vector3.new(pillarOffset, 7, 0),
+			Size = Vector3.new(2, 15, 2),
+			Position = base + Vector3.new(pillarOffset, 7.5, 0),
 			Color = Color3.fromRGB(62, 74, 96),
 			Material = Enum.Material.Slate,
 			Parent = parent,
@@ -441,27 +688,36 @@ local function buildPortal(parent: Instance)
 
 	createPart({
 		Name = "PortalArch",
-		Size = Vector3.new(16, 2, 2),
-		Position = base + Vector3.new(0, 14.5, 0),
+		Size = Vector3.new(20, 2, 2),
+		Position = base + Vector3.new(0, 16, 0),
 		Color = Color3.fromRGB(62, 74, 96),
 		Material = Enum.Material.Slate,
 		Parent = parent,
 	})
 
+	--[[
+		One green disc, same orientation convention as the world
+		portals: the cylinder's flat axis faces the walker. PortalFx
+		spins its swirl rings around that axis, so the old unrotated
+		block put three giant rings sideways THROUGH the arch -- the
+		"extra portals" mess. Matching the convention gives a single
+		coherent green portal.
+	]]
 	local swirl = createPart({
 		Name = "Portal",
-		Size = Vector3.new(11, 12, 0.8),
-		Position = base + Vector3.new(0, 7, 0),
-		Color = PORTAL_COLOR,
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(1, 13, 13),
+		CFrame = CFrame.new(base + Vector3.new(0, 7.5, 0)) * CFrame.Angles(0, math.rad(90), 0),
+		Color = PORTAL_GREEN,
 		Material = Enum.Material.Neon,
-		Transparency = 0.25,
+		Transparency = 0.15,
 		CanCollide = false,
 		Parent = parent,
 	})
 	swirl:SetAttribute("WorldIndex", 1)
 	addPrompt(swirl, "Travel", "Portal")
-	addBillboard(swirl, "PORTAL -- TRAVEL TO THE WORLDS!", PORTAL_COLOR, 9)
-	addOutline(swirl, PORTAL_COLOR)
+	addBillboard(swirl, "PORTAL -- TRAVEL TO THE WORLDS!", PORTAL_GREEN, 9)
+	addOutline(swirl, Color3.fromRGB(160, 255, 130))
 	CollectionService:AddTag(swirl, "Portal")
 end
 
@@ -508,6 +764,19 @@ local function buildShopStall(parent: Instance)
 	addBillboard(counter, "SHOP -- POTIONS & UPGRADES!", GOLD_COLOR, 7)
 	addOutline(counter, GOLD_COLOR)
 	CollectionService:AddTag(counter, "ShopStation")
+
+	-- A little cafe spill-out beside the stall.
+	placeProp(parent, cityPath("Restaurant Related", "Table"), base + Vector3.new(10, 0, 4), 3, 15)
+	for chairIndex, chairOffset in ipairs({ Vector3.new(13, 0, 4), Vector3.new(7, 0, 7) }) do
+		placeProp(
+			parent,
+			cityPath("Restaurant Related", "Restaurant Chair"),
+			base + chairOffset,
+			2.6,
+			chairIndex * 140
+		)
+	end
+	placeProp(parent, naturePath("Potted Plant"), base + Vector3.new(-7, 0, 3), 2.5, 0)
 end
 
 local function buildGroupChest(parent: Instance)
@@ -671,10 +940,26 @@ local function buildHouse(parent: Instance)
 	light.Parent = lamp
 
 	addBillboard(table, "COZY CORNER -- TAKE A BREAK!", SIGN_TEXT_COLOR, 6)
+
+	-- A front garden so the house sits in the island instead of on it.
+	placeProp(parent, naturePath("Flower 6"), base + Vector3.new(-9, 0, 13), 2, 0)
+	placeProp(parent, naturePath("Flower 10"), base + Vector3.new(9, 0, 13), 2, 90)
+	placeProp(parent, naturePath("Bush"), base + Vector3.new(-15, 0, 8), 3, 40)
+	placeProp(parent, naturePath("Tall Bush Flower 2"), base + Vector3.new(16, 0, 6), 3.5, -30)
+	placeProp(
+		parent,
+		naturePath("Birch Tree"),
+		base + Vector3.new(-20, 0, -6),
+		13,
+		70,
+		fallbackTree
+	)
 end
 
 local function buildWheel(parent: Instance)
-	local base = CENTER + Vector3.new(-70, 0, -50)
+	-- West-front lawn: the old spot at (-70, -50) sat inside the town
+	-- district's footprint, which only showed once the packs synced.
+	local base = CENTER + Vector3.new(-118, 0, 55)
 	local hubHeight = 11
 
 	for _, postOffset in ipairs({ -2.4, 2.4 }) do
@@ -944,6 +1229,16 @@ function HubService.start()
 		return
 	end
 
+	-- Resolve the pack folder first: every build below places real
+	-- models through placeProp when it exists, and falls back to
+	-- placeholder part-work when it does not.
+	local assetsFolder = ReplicatedStorage:FindFirstChild("Assets")
+	local modelsFolder = if assetsFolder ~= nil then assetsFolder:FindFirstChild("Models") else nil
+	packModelsFolder = modelsFolder
+	if modelsFolder == nil then
+		warn("ReplicatedStorage.Assets.Models missing; hub builds with placeholder props")
+	end
+
 	local hubFolder = Instance.new("Folder")
 	hubFolder.Name = "HubIsland"
 
@@ -957,13 +1252,9 @@ function HubService.start()
 	buildWheel(hubFolder)
 	buildSigns(hubFolder)
 
-	local assetsFolder = ReplicatedStorage:FindFirstChild("Assets")
-	local modelsFolder = if assetsFolder ~= nil then assetsFolder:FindFirstChild("Models") else nil
 	if modelsFolder ~= nil then
 		placeTown(hubFolder, modelsFolder)
 		placeEggGarden(hubFolder, modelsFolder)
-	else
-		warn("ReplicatedStorage.Assets.Models missing; hub packs skipped")
 	end
 
 	hubFolder.Parent = Workspace

@@ -88,6 +88,17 @@ local PLACEMENTS: { Placement } = {
 	{ world = 1, path = foodPath("food_33"), x = -18, z = 24, height = 3 },
 	{ world = 1, path = seaPath("Turtle"), x = 26, z = 10, height = 4, yaw = 40 },
 
+	-- Replacements for MapGenerator's old part-built lollipop trees and
+	-- neon flowers, at the exact spots the stand-ins occupied.
+	{ world = 1, path = naturePath("Tree 2"), x = -36, z = 60, height = 12 },
+	{ world = 1, path = naturePath("Double Tree"), x = 34, z = 100, height = 13 },
+	{ world = 1, path = naturePath("Rooted Tree"), x = -30, z = 170, height = 12 },
+	{ world = 1, path = naturePath("Squared Tree"), x = 38, z = 150, height = 11 },
+	{ world = 1, path = naturePath("Flower 1"), x = -20, z = 35, height = 2 },
+	{ world = 1, path = naturePath("Flower 3"), x = 24, z = 70, height = 2 },
+	{ world = 1, path = naturePath("Flower 7"), x = -8, z = 130, height = 2 },
+	{ world = 1, path = naturePath("Flower 9"), x = 12, z = 165, height = 2 },
+
 	-- World 2, Vent City: lamp pairs flanking the main lane plus street
 	-- furniture in the side margins, clear of the pipes, the crusher, the
 	-- vent ceiling, and the plate-bridge yard.
@@ -149,6 +160,10 @@ local PLACEMENTS: { Placement } = {
 	{ world = 3, path = bundlePath("Stones Pack", 4), x = -30, z = 168, height = 3.5 },
 	{ world = 3, path = bundlePath("Stones Pack", 7), x = 30, z = 178, height = 4 },
 	{ world = 3, path = seaPath("Shark"), x = -30, z = 130, height = 8, yaw = 120, lift = 30 },
+
+	-- Replacements for the old freestanding basalt pillars.
+	{ world = 3, path = cavePath(2), x = -40, z = 70, height = 17 },
+	{ world = 3, path = cavePath(4), x = 40, z = 150, height = 16 },
 
 	-- World 4, Cloud Capital: a beach resort in the sky, palms and
 	-- loungers below, one chair on the sky garden itself, and a whale

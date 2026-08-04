@@ -43,7 +43,7 @@ local SIDE_BUTTON_STYLES = {
 	Quests = { icon = "\u{1F4DC}", color = Color3.fromRGB(255, 177, 66) },
 	Shrink = { icon = "\u{1F53D}", color = Color3.fromRGB(52, 172, 224) },
 	Wheel = { icon = "\u{1F3A1}", color = Color3.fromRGB(253, 203, 110) },
-	Settings = { icon = "\u{2699}", color = Color3.fromRGB(99, 110, 114) },
+	Settings = { icon = "\u{2699}\u{FE0F}", color = Color3.fromRGB(125, 140, 158) },
 }
 
 local function createSideButton(parent: Instance, order: number, text: string): TextButton
@@ -432,17 +432,22 @@ function ShopGui.start()
 		Parent = playerGui,
 	})
 
+	-- Two columns of three: the single tall list overflowed its frame
+	-- and crashed into the coin and speed counters on shorter screens.
 	local buttonColumn = UiBuilder.create("Frame", {
 		Name = "ButtonColumn",
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 12, 0.5, 0),
-		Size = UDim2.new(0, 110, 0, 360),
+		Size = UDim2.new(0, 140, 0, 260),
 		BackgroundTransparency = 1,
 		Parent = screenGui,
 	})
 
-	UiBuilder.create("UIListLayout", {
-		Padding = UDim.new(0, 8),
+	UiBuilder.create("UIGridLayout", {
+		CellSize = UDim2.new(0, 64, 0, 80),
+		CellPadding = UDim2.new(0, 8, 0, 6),
+		FillDirection = Enum.FillDirection.Horizontal,
+		FillDirectionMaxCells = 2,
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
 		Parent = buttonColumn,
