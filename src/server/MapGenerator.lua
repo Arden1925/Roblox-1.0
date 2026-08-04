@@ -1651,6 +1651,36 @@ local function buildWorld(parent: Instance, worldIndex: number)
 		Parent = parent,
 	})
 
+	-- Empty plots: the floor, the gate walls, and (via the caller) the
+	-- boundary wall survive; every pad, prop, plaza piece, and obstacle
+	-- goes, leaving the rectangles ready for their rebuild. The portal
+	-- deliberately stays -- without one, a visitor could never leave.
+	if GameConfig.worldsEmptied == true then
+		createPortal(parent, worldIndex, minZ)
+		createBarrierWall(
+			parent,
+			minZ + 80,
+			16,
+			12 + worldIndex * 3,
+			"SizeGate",
+			"RequiredSize",
+			world.gateRequiredSize,
+			GATE_COLOR
+		)
+		createBarrierWall(
+			parent,
+			minZ + 110,
+			5,
+			5,
+			"SqueezeCrack",
+			"MaxAllowedSize",
+			15,
+			CRACK_COLOR
+		)
+
+		return
+	end
+
 	-- Plaza: portal, egg capsule, station, and (every Nth world) the
 	-- Mystery Machine.
 	createPortal(parent, worldIndex, minZ)

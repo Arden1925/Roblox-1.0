@@ -88,7 +88,7 @@ local function buildPetRow(parent: Instance, order: number, info: PetCatalog.Pet
 	local row = UiBuilder.create("Frame", {
 		Name = info.id,
 		LayoutOrder = order,
-		Size = UDim2.new(1, -12, 0, 42),
+		Size = UDim2.new(1, -12, 0, 56),
 		BackgroundColor3 = CARD_COLOR,
 		BorderSizePixel = 0,
 		Parent = parent,
@@ -96,31 +96,36 @@ local function buildPetRow(parent: Instance, order: number, info: PetCatalog.Pet
 	UiBuilder.round(row, 8)
 	UiBuilder.stroke(row, info.tierColor, 1)
 
-	-- A live 3D thumbnail beats a colored square for "what can I get".
-	PetViewport.create(row, info.id, UDim2.new(0, 36, 0, 36), UDim2.new(0, 4, 0, 3))
+	-- A live 3D thumbnail beats a colored square for "what can I get";
+	-- centered up top so each row reads like a little collector card.
+	PetViewport.create(row, info.id, UDim2.new(0, 48, 0, 48), UDim2.new(0.5, -24, 0, 2))
 
+	-- The name overlaps the viewport's mostly-empty lower edge, which is
+	-- how a 56px row fits both; ZIndex keeps the text in front.
 	UiBuilder.create("TextLabel", {
-		Position = UDim2.new(0, 46, 0, 0),
-		Size = UDim2.new(0.55, 0, 1, 0),
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -3),
+		Size = UDim2.new(1, -16, 0, 15),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
 		Text = string.format("%s (%s)", info.name, info.tierName),
 		TextColor3 = info.tierColor,
-		TextSize = 14,
-		TextXAlignment = Enum.TextXAlignment.Left,
+		TextSize = 13,
+		ZIndex = 2,
 		Parent = row,
 	})
 
 	UiBuilder.create("TextLabel", {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -10, 0, 0),
-		Size = UDim2.new(0.35, 0, 1, 0),
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -10, 0.5, 0),
+		Size = UDim2.new(0.3, 0, 0, 20),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBlack,
 		Text = odds,
 		TextColor3 = Color3.fromRGB(255, 255, 255),
 		TextSize = 14,
 		TextXAlignment = Enum.TextXAlignment.Right,
+		ZIndex = 2,
 		Parent = row,
 	})
 end
@@ -237,13 +242,126 @@ local function buildNamePrompt(overlay: Frame, petIndex: number, titleLabel: Tex
 end
 
 --[[
+	Finds the current world's egg model in the Classic Studs pack. The
+	pack splits its eggs between a "Models" and a "Decoration" folder and
+	the config does not record which one holds each egg, so both are
+	searched. Yields briefly for Assets; call from a spawned task.
+]]
+local function findEggTemplate(worldIndex: number): Instance?
+	local world = GameConfig.worlds[worldIndex]
+	if world == nil or world.eggModelName == nil then
+		return nil
+	end
+
+	-- Timeouts instead of open-ended waits: if the asset tree never
+	-- replicates, the cinematic must fall back rather than hang.
+	local assets = ReplicatedStorage:WaitForChild("Assets", 5)
+	local models = if assets ~= nil then assets:WaitForChild("Models", 5) else nil
+	local pack = if models ~= nil then models:FindFirstChild("Classic_Studs_Eggs_Pack") else nil
+	if pack == nil then
+		return nil
+	end
+
+	for _, folderName in ipairs({ "Models", "Decoration" }) do
+		local folder = pack:FindFirstChild(folderName)
+		local template = if folder ~= nil then folder:FindFirstChild(world.eggModelName) else nil
+		if template ~= nil then
+			return template
+		end
+	end
+
+	return nil
+end
+
+--[[
+	Builds the cinematic egg: the same model that floats in the world's
+	pod, cloned into a WorldModel and framed with PetViewport's bounds
+	math so plain and decorated eggs alike fill the frame. Returns nil
+	when the model is missing so the caller can fall back.
+]]
+local function buildEggViewport(overlay: Frame, worldIndex: number): ViewportFrame?
+	local template = findEggTemplate(worldIndex)
+	if template == nil then
+		return nil
+	end
+
+	local viewport = UiBuilder.create("ViewportFrame", {
+		Name = "EggViewport",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, -0.2, 0),
+		Size = UDim2.new(0, 180, 0, 180),
+		BackgroundTransparency = 1,
+		Ambient = Color3.fromRGB(200, 200, 210),
+		LightColor = Color3.fromRGB(255, 255, 255),
+		LightDirection = Vector3.new(-1, -1, -0.5),
+		ZIndex = 7,
+		Parent = overlay,
+	}) :: ViewportFrame
+
+	local worldModel = Instance.new("WorldModel")
+	worldModel.Parent = viewport
+
+	-- Wrapping the clone in a Model gives lone parts and full models the
+	-- same bounds API, mirroring how the hub garden places pack eggs.
+	local container = Instance.new("Model")
+	local clone = template:Clone()
+	clone.Parent = container
+
+	-- The WorldModel simulates physics; unanchored pack parts would
+	-- simply fall out of frame.
+	for _, descendant in ipairs(container:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			descendant.Anchored = true
+		end
+	end
+
+	local boxCFrame, boxSize = container:GetBoundingBox()
+	container:PivotTo(container:GetPivot() + (Vector3.zero - boxCFrame.Position))
+	container.Parent = worldModel
+
+	-- Same framing rule as PetViewport: distance grows with the model's
+	-- real bounds, so no egg is cropped or left tiny in the corner.
+	local radius = math.max(boxSize.X, boxSize.Y, boxSize.Z)
+	local distance = radius * 1.4 + 0.6
+
+	local camera = Instance.new("Camera")
+	camera.CFrame = CFrame.new(Vector3.new(0, boxSize.Y * 0.18, -distance), Vector3.zero)
+	camera.Parent = viewport
+	viewport.CurrentCamera = camera
+
+	return viewport
+end
+
+-- The pre-pack emoji egg, kept as the fallback so a missing or renamed
+-- model can never break the hatch cinematic.
+local function buildEmojiEgg(overlay: Frame): TextLabel
+	return UiBuilder.create("TextLabel", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, -0.2, 0),
+		Size = UDim2.new(0, 140, 0, 140),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		Text = "\u{1F95A}",
+		TextSize = 110,
+		ZIndex = 7,
+		Parent = overlay,
+	}) :: TextLabel
+end
+
+--[[
 	The full hatch cinematic, fullscreen so the odds menu stays hidden:
-	the egg drops in and shakes harder and harder, cracks in a white
-	flash and a burst of rays and confetti, then the pet spins out with
-	its tier, its mutation, and a box to name it on the spot. Yields
+	the world's egg drops in and shakes harder and harder, cracks in a
+	white flash and a burst of rays and confetti, then the pet spins out
+	with its tier, its mutation, and a box to name it on the spot. Yields
 	between beats; call from a spawned task.
 ]]
-local function playReveal(screenGui: ScreenGui, window: Frame, petId: string, petIndex: number)
+local function playReveal(
+	screenGui: ScreenGui,
+	window: Frame,
+	worldIndex: number,
+	petId: string,
+	petIndex: number
+)
 	local info = PetCatalog.infoFor(petId)
 	if info == nil then
 		-- Defensive: the server only sends catalog ids, but if one ever
@@ -268,17 +386,8 @@ local function playReveal(screenGui: ScreenGui, window: Frame, petId: string, pe
 
 	TweenService:Create(overlay, TweenInfo.new(0.3), { BackgroundTransparency = 0.2 }):Play()
 
-	local egg = UiBuilder.create("TextLabel", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, -0.2, 0),
-		Size = UDim2.new(0, 140, 0, 140),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBlack,
-		Text = "\u{1F95A}",
-		TextSize = 110,
-		ZIndex = 7,
-		Parent = overlay,
-	}) :: TextLabel
+	local eggViewport = buildEggViewport(overlay, worldIndex)
+	local egg: GuiObject = if eggViewport ~= nil then eggViewport else buildEmojiEgg(overlay)
 
 	-- The drop: bounce into the middle of the screen.
 	local drop = TweenService:Create(
@@ -439,7 +548,9 @@ local function buildWindow(parent: Instance): Frame
 		Name = "EggWindow",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
-		Size = UDim2.new(0, 420, 0, 470),
+		-- Tall enough for the 304px pet list plus both buttons and the
+		-- hint; the window is center-anchored, so growth stays on screen.
+		Size = UDim2.new(0, 420, 0, 540),
 		BackgroundColor3 = PANEL_COLOR,
 		BorderSizePixel = 0,
 		Visible = false,
@@ -499,10 +610,12 @@ local function openForWorld(window: Frame, worldIndex: number)
 		bannerTitle.Text = string.upper(world.eggName)
 	end
 
+	-- Five 56px rows plus four 6px gaps; the buttons below are placed
+	-- off this height, so the four numbers move together.
 	local list = UiBuilder.create("Frame", {
 		Name = "PetList",
 		Position = UDim2.new(0, 10, 0, 50),
-		Size = UDim2.new(1, -20, 0, 230),
+		Size = UDim2.new(1, -20, 0, 304),
 		BackgroundTransparency = 1,
 		Parent = window,
 	})
@@ -531,7 +644,7 @@ local function openForWorld(window: Frame, worldIndex: number)
 	local hatchButton = UiBuilder.create("TextButton", {
 		Name = "HatchButton",
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 292),
+		Position = UDim2.new(0.5, 0, 0, 366),
 		Size = UDim2.new(1, -20, 0, 52),
 		BackgroundColor3 = COIN_COLOR,
 		BorderSizePixel = 0,
@@ -560,15 +673,17 @@ local function openForWorld(window: Frame, worldIndex: number)
 		task.spawn(function()
 			local hatchEgg = Remotes.get("HatchEgg") :: RemoteFunction
 
-			-- InvokeServer throws if the server errors mid-call.
+			-- InvokeServer throws if the server errors mid-call. The world
+			-- rides along because the hub hatchery sells every world's egg
+			-- from one row of stands.
 			local invoked, success, result = pcall(function()
-				return hatchEgg:InvokeServer()
+				return hatchEgg:InvokeServer(worldIndex)
 			end)
 
 			local resultIsTable = invoked and success and typeof(result) == "table"
 			if resultIsTable and typeof(result.petId) == "string" then
 				local screenGui = window.Parent :: ScreenGui
-				playReveal(screenGui, window, result.petId, result.petIndex)
+				playReveal(screenGui, window, worldIndex, result.petId, result.petIndex)
 			else
 				revealActive = false
 				UiBuilder.popOpen(window)
@@ -585,7 +700,7 @@ local function openForWorld(window: Frame, worldIndex: number)
 	local robuxButton = UiBuilder.create("TextButton", {
 		Name = "RobuxEggButton",
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 354),
+		Position = UDim2.new(0.5, 0, 0, 428),
 		Size = UDim2.new(1, -20, 0, 52),
 		BackgroundColor3 = if robuxAvailable then ROBUX_COLOR else CARD_COLOR,
 		BorderSizePixel = 0,
@@ -611,7 +726,7 @@ local function openForWorld(window: Frame, worldIndex: number)
 	UiBuilder.create("TextLabel", {
 		Name = "RoyalHint",
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 412),
+		Position = UDim2.new(0.5, 0, 0, 486),
 		Size = UDim2.new(1, -20, 0, 44),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,

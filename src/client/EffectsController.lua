@@ -1,7 +1,8 @@
 --[[
-	Game feel for size changes: growth sparkles and a camera punch when
-	shrinking. This is deliberately a feature, not polish -- the constant
-	sensory feedback on the number going up is what makes the loop stick.
+	Game feel for size changes: growth sparkles, a camera punch when
+	shrinking, and a fullscreen glitch burst for cutscenes. This is
+	deliberately a feature, not polish -- the constant sensory feedback
+	on the number going up is what makes the loop stick.
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -19,7 +20,28 @@ local SHRINK_DETECTION_DROP = 5
 
 local GROWTH_PARTICLE_COLOR = Color3.fromRGB(76, 209, 55)
 
+local GLITCH_SLICE_COUNT = 3
+local GLITCH_SWAP_COUNT = 24
+-- Asymmetric on purpose: an even in/out kick reads as breathing, not
+-- as a malfunction.
+local GLITCH_FOV_KICK = 2
+local GLITCH_FOV_DIP = 1
+local GLITCH_SLICE_COLOR = Color3.fromRGB(230, 235, 245)
+local GLITCH_MAGENTA = Color3.fromRGB(255, 0, 128)
+local GLITCH_CYAN = Color3.fromRGB(0, 229, 255)
+-- Mirrored offsets pull the magenta ghost left and the cyan one right,
+-- which is what sells the RGB-split look.
+local GLITCH_GHOST_OFFSETS = { -10, 10 }
+
 local localPlayer = Players.LocalPlayer
+
+-- The glitch overlay is built once and reused: the landing cutscene can
+-- fire it on every respawn, and rebuilding frames each time would churn
+-- instances for no visual gain.
+local glitchGui: ScreenGui? = nil
+local glitchSlices: { Frame } = {}
+local glitchGhosts: { Frame } = {}
+local glitchActive = false
 
 local EffectsController = {}
 
@@ -79,6 +101,121 @@ local function startSpinners()
 				part.CFrame = CFrame.new(basePosition + Vector3.new(0, bob, 0)) * spin
 			end
 		end
+	end)
+end
+
+local function ensureGlitchGui(): ScreenGui
+	if glitchGui ~= nil then
+		return glitchGui
+	end
+
+	local playerGui = localPlayer:WaitForChild("PlayerGui")
+
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "GlitchGui"
+	screenGui.ResetOnSpawn = false
+	-- Above every gameplay window: a screen tear that only covers half
+	-- the HUD reads as a broken UI, not a broken world.
+	screenGui.DisplayOrder = 30
+	screenGui.IgnoreGuiInset = true
+	screenGui.Enabled = false
+	screenGui.Parent = playerGui
+
+	for sliceIndex = 1, GLITCH_SLICE_COUNT do
+		local slice = Instance.new("Frame")
+		slice.Name = "GlitchSlice" .. sliceIndex
+		slice.Size = UDim2.new(1, 60, 0, 12 + sliceIndex * 6)
+		slice.Position = UDim2.new(0, -30, sliceIndex / (GLITCH_SLICE_COUNT + 1), 0)
+		slice.BackgroundColor3 = GLITCH_SLICE_COLOR
+		slice.BackgroundTransparency = 0.75
+		slice.BorderSizePixel = 0
+		slice.Visible = false
+		slice.ZIndex = 2
+		slice.Parent = screenGui
+
+		table.insert(glitchSlices, slice)
+	end
+
+	for ghostIndex, offset in ipairs(GLITCH_GHOST_OFFSETS) do
+		local ghost = Instance.new("Frame")
+		ghost.Name = "GlitchGhost" .. ghostIndex
+		ghost.Size = UDim2.new(1, 24, 0, 5)
+		ghost.Position = UDim2.new(0, offset, 0.4 + ghostIndex * 0.1, 0)
+		ghost.BackgroundColor3 = if ghostIndex == 1 then GLITCH_MAGENTA else GLITCH_CYAN
+		ghost.BackgroundTransparency = 0.55
+		ghost.BorderSizePixel = 0
+		ghost.Visible = false
+		ghost.Parent = screenGui
+
+		table.insert(glitchGhosts, ghost)
+	end
+
+	glitchGui = screenGui
+
+	return screenGui
+end
+
+--[[
+	A short fullscreen datamosh: horizontal slices jumping around, a
+	magenta/cyan ghost pair for the RGB-split feel, and a small camera
+	FieldOfView jitter. Non-yielding; the overlay hides itself and the
+	FieldOfView is restored exactly when the duration ends.
+]]
+function EffectsController.glitch(durationSeconds: number)
+	assert(typeof(durationSeconds) == "number", "durationSeconds must be a number")
+	assert(durationSeconds > 0, "durationSeconds must be positive")
+
+	-- Overlapping glitches would fight over the shared frames and could
+	-- capture an already-kicked FieldOfView as the value to restore.
+	if glitchActive then
+		return
+	end
+	glitchActive = true
+
+	local overlay = ensureGlitchGui()
+
+	task.spawn(function()
+		local camera = Workspace.CurrentCamera
+		local originalFieldOfView = if camera ~= nil then camera.FieldOfView else 0
+
+		overlay.Enabled = true
+
+		local stepSeconds = durationSeconds / GLITCH_SWAP_COUNT
+		for swapIndex = 1, GLITCH_SWAP_COUNT do
+			-- Slices and ghosts alternate, so something always tears but
+			-- nothing ever settles into a readable shape.
+			local slicesVisible = swapIndex % 2 == 1
+
+			for _, slice in ipairs(glitchSlices) do
+				slice.Visible = slicesVisible
+				slice.Position = UDim2.new(0, math.random(-40, 40), math.random(), 0)
+			end
+
+			for ghostIndex, ghost in ipairs(glitchGhosts) do
+				ghost.Visible = not slicesVisible
+				ghost.Position = UDim2.new(0, GLITCH_GHOST_OFFSETS[ghostIndex], math.random(), 0)
+			end
+
+			if camera ~= nil then
+				camera.FieldOfView = originalFieldOfView
+					+ (if slicesVisible then GLITCH_FOV_KICK else -GLITCH_FOV_DIP)
+			end
+
+			task.wait(stepSeconds)
+		end
+
+		for _, slice in ipairs(glitchSlices) do
+			slice.Visible = false
+		end
+		for _, ghost in ipairs(glitchGhosts) do
+			ghost.Visible = false
+		end
+		overlay.Enabled = false
+
+		if camera ~= nil then
+			camera.FieldOfView = originalFieldOfView
+		end
+		glitchActive = false
 	end)
 end
 

@@ -22,8 +22,17 @@ type WheelRecord = {
 
 local recordByPlayer: { [Player]: WheelRecord } = {}
 
+-- The consolation when a reroll lands with no pet equipped.
+local REROLL_FALLBACK_COINS = 500
+
 local awardCoins: (Player, number) -> () = function() end
 local grantMaxSize: (Player, number) -> () = function() end
+local grantUltraPet: (Player) -> string? = function()
+	return nil
+end
+local rerollMutation: (Player) -> string? = function()
+	return nil
+end
 
 local WheelService = {}
 
@@ -51,7 +60,9 @@ local function rollRewardIndex(): number
 	return #GameConfig.wheel.rewards
 end
 
-local function applyReward(player: Player, reward: { [string]: any })
+-- Returns an optional detail line for rewards whose outcome the label
+-- alone cannot describe (which pet, which mutation).
+local function applyReward(player: Player, reward: { [string]: any }): string?
 	if reward.kind == "coins" then
 		awardCoins(player, reward.amount)
 	elseif reward.kind == "maxSize" then
@@ -59,7 +70,23 @@ local function applyReward(player: Player, reward: { [string]: any })
 	elseif reward.kind == "effect" then
 		local expiresAt = Workspace:GetServerTimeNow() + reward.durationSeconds
 		player:SetAttribute(reward.effectKey .. "Until", expiresAt)
+	elseif reward.kind == "ultraPet" then
+		local petName = grantUltraPet(player)
+
+		return if petName ~= nil then "You won " .. petName .. "!" else nil
+	elseif reward.kind == "mutationReroll" then
+		local newName = rerollMutation(player)
+		if newName == nil then
+			-- No equipped pet to reroll; pay out coins instead of nothing.
+			awardCoins(player, REROLL_FALLBACK_COINS)
+
+			return string.format("No pet equipped -- %d coins instead!", REROLL_FALLBACK_COINS)
+		end
+
+		return "Your pet is now " .. newName .. "!"
 	end
+
+	return nil
 end
 
 -- Wired as SpinWheel.OnServerInvoke.
@@ -86,10 +113,10 @@ function WheelService.spin(player: Player): (boolean, any)
 
 	local rewardIndex = rollRewardIndex()
 	local reward = GameConfig.wheel.rewards[rewardIndex]
-	applyReward(player, reward)
+	local detail = applyReward(player, reward)
 	publish(player, record)
 
-	return true, { rewardIndex = rewardIndex, label = reward.label }
+	return true, { rewardIndex = rewardIndex, label = reward.label, detail = detail }
 end
 
 -- Called when the extra-spin developer product is granted.
@@ -128,9 +155,13 @@ end
 function WheelService.start(dependencies: {
 	awardCoins: (Player, number) -> (),
 	grantMaxSize: (Player, number) -> (),
+	grantUltraPet: (Player) -> string?,
+	rerollMutation: (Player) -> string?,
 })
 	awardCoins = dependencies.awardCoins
 	grantMaxSize = dependencies.grantMaxSize
+	grantUltraPet = dependencies.grantUltraPet
+	rerollMutation = dependencies.rerollMutation
 end
 
 return WheelService

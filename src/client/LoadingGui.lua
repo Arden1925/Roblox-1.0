@@ -15,6 +15,7 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Client = script.Parent
+local EffectsController = require(Client.EffectsController)
 local SoundController = require(Client.SoundController)
 local UiBuilder = require(Client.UiBuilder)
 
@@ -27,6 +28,17 @@ local COVER_BOTTOM_COLOR = Color3.fromRGB(38, 52, 96)
 local TITLE_COLOR = Color3.fromRGB(255, 202, 58)
 local TIP_COLOR = Color3.fromRGB(178, 190, 195)
 local WING_COLOR = Color3.fromRGB(245, 246, 250)
+local WING_EDGE_COLOR = Color3.fromRGB(246, 214, 120)
+
+-- Longest feather first; each layer steps down so the wing tapers.
+local FEATHER_LENGTHS = { 4.5, 3.4, 2.4 }
+local FEATHER_THICKNESS = 0.25
+local WING_FLAP_ANGLE_DEGREES = 7
+-- Half of the ~1.6s full flap cycle; the tween reverses to make the
+-- upstroke, so the glide reads gentle instead of flappy.
+local WING_FLAP_SECONDS = 0.8
+local WING_FLAP_INFO =
+	TweenInfo.new(WING_FLAP_SECONDS, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
 
 local TIP_SWAP_SECONDS = 4
 local MINIMUM_COVER_SECONDS = 1.5
@@ -141,32 +153,75 @@ local function dismissCover(cover: Frame)
 	end)
 end
 
--- Client-local superman wings: welded to the anchored root so they ride
--- the flight tweens, faded out after touchdown.
+--[[
+	Client-local superman wings: three thin feather layers per side,
+	fanned so the tips separate, each with a gold-tinted sliver along its
+	trailing edge. Every part is welded to the anchored root so the
+	flight tweens carry the whole wing; the flap tweens each feather's
+	weld C0, which moves the feather without fighting those tweens.
+]]
 local function attachWings(rootPart: BasePart): { BasePart }
 	local wings = {}
 
 	for _, side in ipairs({ -1, 1 }) do
-		for layerIndex = 1, 3 do
+		for layerIndex, featherLength in ipairs(FEATHER_LENGTHS) do
 			local feather = Instance.new("Part")
 			feather.Name = "CutsceneWing"
-			feather.Size = Vector3.new(0.35, 0.9, 3.6 - layerIndex * 0.6)
+			feather.Size = Vector3.new(FEATHER_THICKNESS, 0.7, featherLength)
 			feather.Color = WING_COLOR
 			feather.Material = Enum.Material.SmoothPlastic
 			feather.CanCollide = false
 			feather.CanQuery = false
 			feather.Massless = true
-			feather.CFrame = rootPart.CFrame
-				* CFrame.new(side * (0.9 + layerIndex * 0.5), 0.9 - layerIndex * 0.28, 1.2)
-				* CFrame.Angles(0, side * math.rad(20 + layerIndex * 14), side * math.rad(-14))
+
+			-- Each layer sits a little further out, lower, and more
+			-- swept than the last, so the three feathers read as a fan
+			-- instead of one chunky slab.
+			local offset = CFrame.new(
+				side * (0.8 + layerIndex * 0.45),
+				1 - layerIndex * 0.3,
+				1.2 + layerIndex * 0.15
+			) * CFrame.Angles(
+				0,
+				side * math.rad(24 + layerIndex * 16),
+				side * math.rad(-8 - layerIndex * 5)
+			)
+			feather.CFrame = rootPart.CFrame * offset
 			feather.Parent = rootPart
 
-			local weld = Instance.new("WeldConstraint")
+			-- A Weld instead of a WeldConstraint: the rigid joint still
+			-- carries the feather through every flight tween, but it
+			-- exposes C0 for the flap tween below.
+			local weld = Instance.new("Weld")
 			weld.Part0 = rootPart
 			weld.Part1 = feather
+			weld.C0 = offset
 			weld.Parent = feather
 
+			TweenService:Create(weld, WING_FLAP_INFO, {
+				C0 = offset * CFrame.Angles(0, 0, side * math.rad(WING_FLAP_ANGLE_DEGREES)),
+			}):Play()
+
+			local edge = Instance.new("Part")
+			edge.Name = "CutsceneWingEdge"
+			edge.Size = Vector3.new(FEATHER_THICKNESS + 0.02, 0.12, featherLength)
+			edge.Color = WING_EDGE_COLOR
+			edge.Material = Enum.Material.SmoothPlastic
+			edge.CanCollide = false
+			edge.CanQuery = false
+			edge.Massless = true
+			edge.CFrame = feather.CFrame * CFrame.new(0, -0.32, 0)
+			edge.Parent = feather
+
+			-- Welded to its feather, not the root, so it rides the flap.
+			local edgeWeld = Instance.new("Weld")
+			edgeWeld.Part0 = feather
+			edgeWeld.Part1 = edge
+			edgeWeld.C0 = CFrame.new(0, -0.32, 0)
+			edgeWeld.Parent = edge
+
 			table.insert(wings, feather)
+			table.insert(wings, edge)
 		end
 	end
 
@@ -265,6 +320,10 @@ local function playLanding(cover: Frame?, landingPosition: Vector3)
 		-- flickering body while their size finds itself again.
 		local front = landingPosition + Vector3.new(0, 2.5, 10)
 		camera.CFrame = CFrame.lookAt(front, landingPosition + Vector3.new(0, 2, 0))
+
+		-- The whole screen tears while the body flickers, selling the
+		-- size glitch as a simulation hiccup rather than a character bug.
+		EffectsController.glitch(#GLITCH_FACTORS * GLITCH_STEP_SECONDS)
 
 		for _, factor in ipairs(GLITCH_FACTORS) do
 			character:ScaleTo(originalScale * factor)

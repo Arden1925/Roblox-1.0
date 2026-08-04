@@ -7,6 +7,7 @@
 
 local Client = script
 local BackpackGui = require(Client.BackpackGui)
+local CodesGui = require(Client.CodesGui)
 local CurrencyHud = require(Client.CurrencyHud)
 local EffectsController = require(Client.EffectsController)
 local EggGui = require(Client.EggGui)
@@ -37,6 +38,7 @@ task.spawn(WheelGui.start)
 task.spawn(SettingsGui.start)
 task.spawn(ShopGui.start)
 task.spawn(BackpackGui.start)
+task.spawn(CodesGui.start)
 task.spawn(EggGui.start)
 task.spawn(StationGui.start)
 task.spawn(PortalGui.start)

@@ -41,6 +41,7 @@ export type PlayerData = {
 	quests: { { [string]: any } },
 	wheelLastSpinAt: number,
 	wheelSpinCredits: number,
+	redeemedCodes: { string },
 }
 
 local store = nil
@@ -73,6 +74,7 @@ local function copyDefaultData(): PlayerData
 		quests = {},
 		wheelLastSpinAt = 0,
 		wheelSpinCredits = 0,
+		redeemedCodes = {},
 	}
 end
 
@@ -131,6 +133,14 @@ local function sanitize(result: any): PlayerData
 		for _, petId in ipairs(result.pets) do
 			if typeof(petId) == "string" then
 				table.insert(data.pets, petId)
+			end
+		end
+	end
+
+	if typeof(result.redeemedCodes) == "table" then
+		for _, code in ipairs(result.redeemedCodes) do
+			if typeof(code) == "string" then
+				table.insert(data.redeemedCodes, code)
 			end
 		end
 	end

@@ -45,6 +45,9 @@ local HALF_SIZE = hub.islandSize / 2
 -- The pad sits behind true center so the front quarter stays an open
 -- terrace looking out at the sky.
 local PAD_POSITION = CENTER + Vector3.new(0, 0, 20)
+-- Where the dais top surface sits above the island; arrivals and the
+-- cutscene both land relative to this.
+local PAD_SURFACE_HEIGHT = 3.2
 local TERRACE_EDGE_Z = CENTER.Z + HALF_SIZE
 
 local cutsceneSeenByPlayer: { [Player]: boolean } = {}
@@ -523,24 +526,51 @@ local function buildBase(parent: Instance)
 	end
 end
 
+--[[
+	The landing dais: three stone steps rising to a gold-ringed marble
+	top, four rune beacons on the diagonals, and soft light rays
+	climbing into the sky the cutscene dives out of. The pulse ring is
+	named so the client can flare it on touchdown.
+]]
 local function buildLandingPad(parent: Instance)
+	for stepIndex, step in ipairs({
+		{ diameter = 30, lift = 0.45 },
+		{ diameter = 25, lift = 1.35 },
+		{ diameter = 20, lift = 2.25 },
+	}) do
+		createPart({
+			Name = "PadStep" .. stepIndex,
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.9, step.diameter, step.diameter),
+			CFrame = CFrame.new(PAD_POSITION + Vector3.new(0, step.lift, 0))
+				* CFrame.Angles(0, 0, math.rad(90)),
+			Color = Color3.fromRGB(
+				205 - stepIndex * 12,
+				199 - stepIndex * 12,
+				186 - stepIndex * 10
+			),
+			Material = Enum.Material.Slate,
+			Parent = parent,
+		})
+	end
+
 	local pad = createPart({
 		Name = "LandingPad",
 		Shape = Enum.PartType.Cylinder,
 		Size = Vector3.new(1, 18, 18),
-		CFrame = CFrame.new(PAD_POSITION + Vector3.new(0, 0.5, 0))
+		CFrame = CFrame.new(PAD_POSITION + Vector3.new(0, PAD_SURFACE_HEIGHT - 0.5, 0))
 			* CFrame.Angles(0, 0, math.rad(90)),
 		Color = WHITE_COLOR,
-		Material = Enum.Material.SmoothPlastic,
+		Material = Enum.Material.Marble,
 		Parent = parent,
 	})
-	addBillboard(pad, "MAIN ISLAND", GOLD_COLOR, 10)
+	addBillboard(pad, "MAIN ISLAND", GOLD_COLOR, 12)
 
 	createPart({
-		Name = "LandingPadRim",
+		Name = "PadPulseRing",
 		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(0.6, 20, 20),
-		CFrame = CFrame.new(PAD_POSITION + Vector3.new(0, 0.2, 0))
+		Size = Vector3.new(0.6, 19.5, 19.5),
+		CFrame = CFrame.new(PAD_POSITION + Vector3.new(0, PAD_SURFACE_HEIGHT - 0.3, 0))
 			* CFrame.Angles(0, 0, math.rad(90)),
 		Color = GOLD_COLOR,
 		Material = Enum.Material.Neon,
@@ -548,18 +578,73 @@ local function buildLandingPad(parent: Instance)
 		Parent = parent,
 	})
 
-	for starIndex = 1, 8 do
-		local angle = starIndex / 8 * math.pi * 2
+	-- Light rays: tall soft neon columns rising from the pad, fading
+	-- with height so the beam reads without blinding anyone.
+	for rayIndex, raySpec in ipairs({
+		{ offset = Vector3.new(0, 0, 0), height = 34, width = 1.6, tilt = 0 },
+		{ offset = Vector3.new(-3.4, 0, 2), height = 26, width = 1, tilt = 4 },
+		{ offset = Vector3.new(3.2, 0, -2.4), height = 28, width = 1, tilt = -4 },
+	}) do
 		createPart({
-			Name = "PadStud" .. starIndex,
+			Name = "PadRay" .. rayIndex,
+			Size = Vector3.new(raySpec.width, raySpec.height, raySpec.width),
+			CFrame = CFrame.new(
+				PAD_POSITION + raySpec.offset + Vector3.new(0, raySpec.height / 2 + 3, 0)
+			) * CFrame.Angles(0, 0, math.rad(raySpec.tilt)),
+			Color = Color3.fromRGB(255, 233, 168),
+			Material = Enum.Material.Neon,
+			Transparency = 0.62,
+			CanCollide = false,
+			CanQuery = false,
+			Parent = parent,
+		})
+	end
+
+	-- Rune beacons on the diagonals: slate pillars, glowing orbs, and a
+	-- tilted spinner ring the client already knows how to rotate.
+	for beaconIndex = 1, 4 do
+		local angle = (beaconIndex - 0.5) / 4 * math.pi * 2
+		local base = PAD_POSITION + Vector3.new(math.cos(angle) * 14, 0, math.sin(angle) * 14)
+
+		createPart({
+			Name = "BeaconPillar" .. beaconIndex,
+			Size = Vector3.new(1.3, 9, 1.3),
+			Position = base + Vector3.new(0, 4.5, 0),
+			Color = Color3.fromRGB(62, 74, 96),
+			Material = Enum.Material.Slate,
+			Parent = parent,
+		})
+
+		local orb = createPart({
+			Name = "BeaconOrb" .. beaconIndex,
 			Shape = Enum.PartType.Ball,
-			Size = Vector3.new(1.2, 1.2, 1.2),
-			Position = PAD_POSITION + Vector3.new(math.cos(angle) * 11, 1.2, math.sin(angle) * 11),
-			Color = GOLD_COLOR,
+			Size = Vector3.new(1.8, 1.8, 1.8),
+			Position = base + Vector3.new(0, 9.8, 0),
+			Color = Color3.fromRGB(255, 233, 168),
 			Material = Enum.Material.Neon,
 			CanCollide = false,
 			Parent = parent,
 		})
+
+		local orbLight = Instance.new("PointLight")
+		orbLight.Color = GOLD_COLOR
+		orbLight.Brightness = 1.6
+		orbLight.Range = 18
+		orbLight.Parent = orb
+
+		local runeRing = createPart({
+			Name = "BeaconRing" .. beaconIndex,
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.25, 3.2, 3.2),
+			CFrame = CFrame.new(base + Vector3.new(0, 9.8, 0))
+				* CFrame.Angles(math.rad(25), 0, math.rad(115)),
+			Color = GOLD_COLOR,
+			Material = Enum.Material.Neon,
+			Transparency = 0.35,
+			CanCollide = false,
+			Parent = parent,
+		})
+		CollectionService:AddTag(runeRing, "Spinner")
 	end
 end
 
@@ -778,42 +863,79 @@ local function buildShopStall(parent: Instance)
 	placeProp(parent, naturePath("Potted Plant"), base + Vector3.new(-7, 0, 3), 2.5, 0)
 end
 
+--[[
+	The group chest, giant edition: 3.5x per side (the sketch's "6x
+	bigger" proportions), gold-banded with a glowing seam. The parts
+	live in one model with the lid closed flat, so the client can swing
+	the lid open and burst coins when a claim succeeds.
+]]
 local function buildGroupChest(parent: Instance)
 	local center = CENTER + Vector3.new(28, 0, 62)
 
+	local chestModel = Instance.new("Model")
+	chestModel.Name = "GroupChestModel"
+	chestModel.Parent = parent
+
 	local body = createPart({
 		Name = "GroupChest",
-		Size = Vector3.new(5, 3, 3.4),
-		Position = center + Vector3.new(0, 1.5, 0),
+		Size = Vector3.new(17.5, 10.5, 11.9),
+		Position = center + Vector3.new(0, 5.25, 0),
 		Color = Color3.fromRGB(110, 80, 48),
 		Material = Enum.Material.Wood,
-		Parent = parent,
+		Parent = chestModel,
 	})
 
 	createPart({
 		Name = "ChestLid",
-		Size = Vector3.new(5.2, 1.4, 3.6),
-		CFrame = CFrame.new(center + Vector3.new(0, 3.4, -0.4))
-			* CFrame.Angles(math.rad(-18), 0, 0),
+		Size = Vector3.new(18.2, 4.2, 12.6),
+		Position = center + Vector3.new(0, 12.6, 0),
 		Color = Color3.fromRGB(96, 68, 38),
 		Material = Enum.Material.Wood,
-		Parent = parent,
+		Parent = chestModel,
 	})
 
-	for _, bandX in ipairs({ -1.6, 1.6 }) do
+	for _, bandX in ipairs({ -5.6, 5.6 }) do
 		createPart({
 			Name = "ChestBand",
-			Size = Vector3.new(0.5, 3.2, 3.6),
-			Position = center + Vector3.new(bandX, 1.5, 0),
+			Size = Vector3.new(1.6, 10.9, 12.3),
+			Position = center + Vector3.new(bandX, 5.25, 0),
 			Color = GOLD_COLOR,
 			Material = Enum.Material.Metal,
 			CanCollide = false,
-			Parent = parent,
+			Parent = chestModel,
 		})
 	end
 
+	-- The glow seam between body and lid: treasure light leaking out.
+	local seam = createPart({
+		Name = "ChestSeam",
+		Size = Vector3.new(17, 0.35, 12),
+		Position = center + Vector3.new(0, 10.5, 0),
+		Color = Color3.fromRGB(255, 233, 168),
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = chestModel,
+	})
+
+	local seamLight = Instance.new("PointLight")
+	seamLight.Color = GOLD_COLOR
+	seamLight.Brightness = 2
+	seamLight.Range = 20
+	seamLight.Parent = seam
+
+	local lock = createPart({
+		Name = "ChestLock",
+		Size = Vector3.new(3, 3.6, 0.9),
+		Position = center + Vector3.new(0, 9.2, 6.2),
+		Color = GOLD_COLOR,
+		Material = Enum.Material.Metal,
+		CanCollide = false,
+		Parent = chestModel,
+	})
+	addOutline(lock, GOLD_COLOR)
+
 	addPrompt(body, "Claim Group Reward", "Group Chest")
-	addBillboard(body, "GROUP REWARD -- JOIN & LIKE!", GOLD_COLOR, 6)
+	addBillboard(body, "GROUP REWARD -- JOIN & LIKE!", GOLD_COLOR, 12)
 	addOutline(body, GOLD_COLOR)
 	CollectionService:AddTag(body, "GroupChest")
 end
@@ -1269,6 +1391,105 @@ local function placeEggGarden(parent: Instance, modelsFolder: Instance)
 		end
 	end
 
+	-- The hatchery row: one glass capsule per world along the garden's
+	-- plaza side, each holding that world's REAL egg model. With the old
+	-- world strip emptied, this is where eggs hatch now; the stands
+	-- carry the same EggStand tag and WorldIndex attribute the egg
+	-- window has always watched.
+	local eggsPack = modelsFolder:FindFirstChild("Classic_Studs_Eggs_Pack")
+
+	local function findEggTemplate(eggModelName: string): Instance?
+		if eggsPack == nil then
+			return nil
+		end
+
+		for _, folderName in ipairs({ "Models", "Decoration" }) do
+			local folder = eggsPack:FindFirstChild(folderName)
+			local found = if folder ~= nil then folder:FindFirstChild(eggModelName) else nil
+			if found ~= nil then
+				return found
+			end
+		end
+
+		return nil
+	end
+
+	for worldIndex, world in ipairs(GameConfig.worlds) do
+		local base = gardenCenter + Vector3.new((worldIndex - 2.5) * 16, 0, 30)
+
+		local pedestal = createPart({
+			Name = "EggStand",
+			Size = Vector3.new(7, 2, 7),
+			Position = base + Vector3.new(0, 1, 0),
+			Color = WHITE_COLOR,
+			Material = Enum.Material.Marble,
+			Parent = garden,
+		})
+		pedestal:SetAttribute("WorldIndex", worldIndex)
+
+		createPart({
+			Name = "HatcheryCapsule",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(11, 8, 8),
+			CFrame = CFrame.new(base + Vector3.new(0, 7.5, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+			Color = Color3.fromRGB(223, 249, 251),
+			Material = Enum.Material.Glass,
+			Transparency = 0.65,
+			CanCollide = false,
+			Parent = garden,
+		})
+
+		local eggTemplate = findEggTemplate(world.eggModelName)
+		if eggTemplate ~= nil then
+			local container = Instance.new("Model")
+			container.Name = world.eggName
+			local clone = eggTemplate:Clone()
+			clone.Parent = container
+			makeInert(container)
+
+			local extents = container:GetExtentsSize()
+			if extents.Y >= 0.05 then
+				container:ScaleTo(4.6 / extents.Y)
+
+				-- Floats above the pedestal, centered in the glass.
+				local boxCFrame, boxSize = container:GetBoundingBox()
+				local target = base + Vector3.new(0, 3.4 + boxSize.Y / 2, 0)
+				container:PivotTo(container:GetPivot() + (target - boxCFrame.Position))
+				container.Parent = garden
+			else
+				container:Destroy()
+			end
+		else
+			-- Fallback shell so the capsule never stands empty.
+			createPart({
+				Name = "HatcheryEggShell",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.new(4, 4.8, 4),
+				Position = base + Vector3.new(0, 6.5, 0),
+				Color = GOLD_COLOR,
+				Material = Enum.Material.SmoothPlastic,
+				CanCollide = false,
+				Parent = garden,
+			})
+		end
+
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText = "Hatch (Press E)"
+		prompt.ObjectText = world.eggName
+		prompt.HoldDuration = 0
+		prompt.MaxActivationDistance = 16
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = pedestal
+
+		addBillboard(
+			pedestal,
+			string.format("%s -- %d COINS", string.upper(world.eggName), world.eggCost),
+			GOLD_COLOR,
+			11
+		)
+		CollectionService:AddTag(pedestal, "EggStand")
+	end
+
 	local gardenSign = createPart({
 		Name = "EggGardenSign",
 		Size = Vector3.new(9, 2.8, 0.5),
@@ -1278,7 +1499,7 @@ local function placeEggGarden(parent: Instance, modelsFolder: Instance)
 		CanCollide = false,
 		Parent = garden,
 	})
-	addBillboard(gardenSign, "THE EGG GARDEN -- EVERY EGG EVER!", GOLD_COLOR, 2.6)
+	addBillboard(gardenSign, "THE EGG GARDEN -- HATCH EVERY EGG!", GOLD_COLOR, 2.6)
 end
 
 -- Pivot a player's character onto the pad; the client cutscene lifts
@@ -1289,13 +1510,13 @@ local function placeAtPad(player: Player): boolean
 		return false
 	end
 
-	character:PivotTo(CFrame.new(PAD_POSITION + Vector3.new(0, 4, 0)))
+	character:PivotTo(CFrame.new(PAD_POSITION + Vector3.new(0, PAD_SURFACE_HEIGHT + 4, 0)))
 
 	return true
 end
 
 function HubService.landingPosition(): Vector3
-	return PAD_POSITION + Vector3.new(0, 4, 0)
+	return PAD_POSITION + Vector3.new(0, PAD_SURFACE_HEIGHT + 4, 0)
 end
 
 --[[
