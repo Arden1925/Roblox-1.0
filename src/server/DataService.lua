@@ -39,6 +39,8 @@ export type PlayerData = {
 	streakLastDate: string,
 	questDate: string,
 	quests: { { [string]: any } },
+	wheelLastSpinAt: number,
+	wheelSpinCredits: number,
 }
 
 local store = nil
@@ -69,6 +71,8 @@ local function copyDefaultData(): PlayerData
 		streakLastDate = "",
 		questDate = "",
 		quests = {},
+		wheelLastSpinAt = 0,
+		wheelSpinCredits = 0,
 	}
 end
 
@@ -93,6 +97,8 @@ local function sanitize(result: any): PlayerData
 		"lastSeenAt",
 		"permanentGrowthBonus",
 		"streakCount",
+		"wheelLastSpinAt",
+		"wheelSpinCredits",
 	}) do
 		if typeof(result[numberField]) == "number" then
 			data[numberField] = result[numberField]

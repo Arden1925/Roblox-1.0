@@ -63,9 +63,22 @@ end
 
 --[[
 	Wired as RequestTeleport.OnServerInvoke. Returns success plus a
-	message the client shows verbatim.
+	message the client shows verbatim. Index 0 is the Main Island, which
+	everyone may visit; real worlds still gate on the reached record.
 ]]
 function WorldService.attemptTeleport(player: Player, worldIndex: any): (boolean, string)
+	if worldIndex == 0 then
+		local character = player.Character
+		if character == nil then
+			return false, "You need a character to teleport."
+		end
+
+		local hub = GameConfig.hub
+		character:PivotTo(CFrame.new(hub.centerX, hub.surfaceY + 5, hub.centerZ))
+
+		return true, "Welcome home -- the Main Island!"
+	end
+
 	if typeof(worldIndex) ~= "number" or GameConfig.worlds[worldIndex] == nil then
 		return false, "That world does not exist."
 	end

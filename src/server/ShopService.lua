@@ -26,6 +26,7 @@ local grantRobuxEggPet: (Player, number) -> () = function() end
 local grantLimitedPet: (Player) -> () = function() end
 local awardCoins: (Player, number) -> () = function() end
 local addPermanentGrowth: (Player, number) -> () = function() end
+local grantWheelSpin: (Player) -> () = function() end
 
 local ShopService = {}
 
@@ -63,6 +64,10 @@ local function productForId(productId: number): ({ [string]: any }?, string?, nu
 
 	if GameConfig.limitedPet.productId == productId then
 		return GameConfig.limitedPet, "limited", nil
+	end
+
+	if GameConfig.wheel.spinProduct.productId == productId then
+		return GameConfig.wheel.spinProduct, "wheelSpin", nil
 	end
 
 	return nil, nil, nil
@@ -194,6 +199,8 @@ local function processReceipt(receiptInfo: { [string]: any }): Enum.ProductPurch
 			"ServerLuckUntil",
 			Workspace:GetServerTimeNow() + product.durationSeconds
 		)
+	elseif kind == "wheelSpin" then
+		grantWheelSpin(player)
 	end
 
 	return Enum.ProductPurchaseDecision.PurchaseGranted
@@ -205,12 +212,14 @@ function ShopService.start(dependencies: {
 	grantLimitedPet: (Player) -> (),
 	awardCoins: (Player, number) -> (),
 	addPermanentGrowth: (Player, number) -> (),
+	grantWheelSpin: (Player) -> (),
 })
 	grantMaxSize = dependencies.grantMaxSize
 	grantRobuxEggPet = dependencies.grantRobuxEggPet
 	grantLimitedPet = dependencies.grantLimitedPet
 	awardCoins = dependencies.awardCoins
 	addPermanentGrowth = dependencies.addPermanentGrowth
+	grantWheelSpin = dependencies.grantWheelSpin
 
 	MarketplaceService.ProcessReceipt = processReceipt
 

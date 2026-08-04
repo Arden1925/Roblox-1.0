@@ -14,6 +14,7 @@ local DataService = require(Server.DataService)
 local EconomyService = require(Server.EconomyService)
 local EventService = require(Server.EventService)
 local GateService = require(Server.GateService)
+local HubService = require(Server.HubService)
 local MapGenerator = require(Server.MapGenerator)
 local MechanismService = require(Server.MechanismService)
 local ObstacleService = require(Server.ObstacleService)
@@ -23,6 +24,7 @@ local RebirthService = require(Server.RebirthService)
 local SceneryService = require(Server.SceneryService)
 local ShopService = require(Server.ShopService)
 local SizeService = require(Server.SizeService)
+local WheelService = require(Server.WheelService)
 local WorldService = require(Server.WorldService)
 
 local Shared = ReplicatedStorage.Shared
@@ -42,6 +44,7 @@ local function snapshotPlayer(player: Player): DataService.PlayerData?
 	local checkpointsClaimed, respawnWorld, respawnIndex = CheckpointService.snapshot(player)
 	local questDate, quests, streakCount, streakLastDate, groupChestClaimed =
 		QuestService.snapshot(player)
+	local wheelLastSpinAt, wheelSpinCredits = WheelService.snapshot(player)
 
 	if sizeSnapshot == nil or reachedWorld == nil or coins == nil or pets == nil then
 		return nil
@@ -75,6 +78,8 @@ local function snapshotPlayer(player: Player): DataService.PlayerData?
 		streakLastDate = streakLastDate or "",
 		questDate = questDate or "",
 		quests = quests or {},
+		wheelLastSpinAt = wheelLastSpinAt or 0,
+		wheelSpinCredits = wheelSpinCredits or 0,
 	}
 end
 
@@ -129,8 +134,15 @@ local function onPlayerAdded(player: Player)
 		data.streakLastDate,
 		data.groupChestClaimed
 	)
+	WheelService.initializePlayer(player, data.wheelLastSpinAt, data.wheelSpinCredits)
 	player:SetAttribute("TutorialDone", data.tutorialDone)
 	grantOfflineGrowth(player, data)
+
+	-- Tutorial graduates go straight home to the Main Island; brand-new
+	-- players stay at the world spawn until the tutorial is done.
+	if data.tutorialDone then
+		HubService.welcome(player)
+	end
 end
 
 Players.PlayerAdded:Connect(function(player)
@@ -150,6 +162,8 @@ Players.PlayerRemoving:Connect(function(player)
 	PetService.removePlayer(player)
 	CheckpointService.removePlayer(player)
 	QuestService.removePlayer(player)
+	WheelService.removePlayer(player)
+	HubService.removePlayer(player)
 
 	if snapshot ~= nil then
 		task.spawn(function()
@@ -175,6 +189,7 @@ local remoteHandlers: { [string]: (Player, ...any) -> (boolean, any) } = {
 	ClaimQuest = QuestService.claimQuest,
 	ClaimStreak = QuestService.claimStreak,
 	ClaimGroupChest = QuestService.claimGroupChest,
+	SpinWheel = WheelService.spin,
 }
 
 for remoteName, handler in pairs(remoteHandlers) do
@@ -198,7 +213,21 @@ setDesiredSpeed.OnServerEvent:Connect(SizeService.setDesiredSpeed)
 
 local markTutorialDone = Remotes.get("MarkTutorialDone") :: RemoteEvent
 markTutorialDone.OnServerEvent:Connect(function(player)
+	local firstTime = player:GetAttribute("TutorialDone") ~= true
 	player:SetAttribute("TutorialDone", true)
+
+	-- Finishing the tutorial is the moment the game hands you the Main
+	-- Island, winged landing and all.
+	if firstTime then
+		HubService.sendToHub(player)
+	end
+end)
+
+local resetCharacter = Remotes.get("ResetCharacter") :: RemoteEvent
+resetCharacter.OnServerEvent:Connect(function(player)
+	-- The settings window's reset button; a fresh character respawns at
+	-- the player's checkpoint like any other death.
+	player:LoadCharacter()
 end)
 
 DataService.start(snapshotPlayer)
@@ -208,9 +237,14 @@ ShopService.start({
 	grantLimitedPet = PetService.grantLimitedPet,
 	awardCoins = EconomyService.awardCoins,
 	addPermanentGrowth = SizeService.addPermanentGrowth,
+	grantWheelSpin = WheelService.grantSpinCredit,
 })
 QuestService.start({
 	awardCoins = EconomyService.awardCoins,
+})
+WheelService.start({
+	awardCoins = EconomyService.awardCoins,
+	grantMaxSize = SizeService.grantMaxSize,
 })
 SizeService.start()
 GateService.start()
@@ -222,3 +256,6 @@ EventService.start()
 MechanismService.start()
 MapGenerator.generate()
 SceneryService.start()
+-- After the map: MapGenerator disables every foreign SpawnLocation
+-- while it builds, and the hub must never be caught by that sweep.
+HubService.start()

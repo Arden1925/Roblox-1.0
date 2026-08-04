@@ -13,6 +13,7 @@ local TweenService = game:GetService("TweenService")
 
 local Client = script.Parent
 local PetViewport = require(Client.PetViewport)
+local SoundController = require(Client.SoundController)
 local Toast = require(Client.Toast)
 local UiBuilder = require(Client.UiBuilder)
 
@@ -124,17 +125,9 @@ local function buildPetRow(parent: Instance, order: number, info: PetCatalog.Pet
 	})
 end
 
+-- Routed through the shared Sfx bus so the settings slider applies.
 local function playSound(parent: Instance, soundId: string, playbackSpeed: number)
-	local sound = Instance.new("Sound")
-	sound.SoundId = soundId
-	sound.Volume = 0.6
-	sound.PlaybackSpeed = playbackSpeed
-	sound.Parent = parent
-	sound:Play()
-
-	task.delay(3, function()
-		sound:Destroy()
-	end)
+	SoundController.playSfx(parent, soundId, playbackSpeed)
 end
 
 -- A ring of thin rays snapping outward from the egg, plus a shower of

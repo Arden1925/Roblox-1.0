@@ -221,6 +221,76 @@ function PortalGui.start()
 	local window = buildWindow(screenGui)
 	local rowList = window:FindFirstChild("RowList")
 
+	-- The Main Island row: pinned on top, always unlocked -- index 0 is
+	-- the server's hub sentinel, not a real world.
+	local function createHubRow(parent: Instance)
+		local row = UiBuilder.create("Frame", {
+			Name = "MainIsland",
+			LayoutOrder = 0,
+			Size = UDim2.new(1, -16, 0, 56),
+			BackgroundColor3 = ROW_COLOR,
+			BorderSizePixel = 0,
+			Parent = parent,
+		})
+
+		UiBuilder.create("UICorner", {
+			CornerRadius = UDim.new(0, 10),
+			Parent = row,
+		})
+
+		UiBuilder.create("TextLabel", {
+			Name = "WorldName",
+			Position = UDim2.new(0, 12, 0, 0),
+			Size = UDim2.new(1, -140, 1, 0),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBold,
+			Text = "\u{2B50} Main Island",
+			TextColor3 = Color3.fromRGB(255, 202, 58),
+			TextSize = 18,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Parent = row,
+		})
+
+		local actionButton = UiBuilder.create("TextButton", {
+			Name = "ActionButton",
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -10, 0.5, 0),
+			Size = UDim2.new(0, 110, 0, 38),
+			BackgroundColor3 = UNLOCKED_COLOR,
+			BorderSizePixel = 0,
+			Font = Enum.Font.GothamBold,
+			Text = "TELEPORT",
+			TextColor3 = Color3.fromRGB(255, 255, 255),
+			TextSize = 16,
+			Parent = row,
+		})
+
+		UiBuilder.create("UICorner", {
+			CornerRadius = UDim.new(0, 10),
+			Parent = actionButton,
+		})
+
+		actionButton.Activated:Connect(function()
+			task.spawn(function()
+				local requestTeleport = Remotes.get("RequestTeleport") :: RemoteFunction
+
+				-- InvokeServer throws if the server errors mid-call.
+				local invoked, success, message = pcall(function()
+					return requestTeleport:InvokeServer(0)
+				end)
+
+				if invoked then
+					Toast.show(message)
+					if success then
+						window.Visible = false
+					end
+				else
+					Toast.show("Something went wrong -- try again.")
+				end
+			end)
+		end)
+	end
+
 	local function openWindow()
 		-- Rebuild rows on every open so lock states always reflect the
 		-- latest ReachedWorld.
@@ -230,6 +300,7 @@ function PortalGui.start()
 			end
 		end
 
+		createHubRow(rowList)
 		for worldIndex = 1, #GameConfig.worlds do
 			createWorldRow(rowList, worldIndex, window)
 		end
