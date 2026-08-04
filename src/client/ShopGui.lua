@@ -13,8 +13,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Client = script.Parent
 local QuestGui = require(Client.QuestGui)
 local RebirthGui = require(Client.RebirthGui)
+local SettingsGui = require(Client.SettingsGui)
 local Toast = require(Client.Toast)
 local UiBuilder = require(Client.UiBuilder)
+local WheelGui = require(Client.WheelGui)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local GameConfig = require(Shared.GameConfig)
@@ -40,6 +42,8 @@ local SIDE_BUTTON_STYLES = {
 	Rebirth = { icon = "\u{2728}", color = Color3.fromRGB(155, 89, 217) },
 	Quests = { icon = "\u{1F4DC}", color = Color3.fromRGB(255, 177, 66) },
 	Shrink = { icon = "\u{1F53D}", color = Color3.fromRGB(52, 172, 224) },
+	Wheel = { icon = "\u{1F3A1}", color = Color3.fromRGB(253, 203, 110) },
+	Settings = { icon = "\u{2699}", color = Color3.fromRGB(99, 110, 114) },
 }
 
 local function createSideButton(parent: Instance, order: number, text: string): TextButton
@@ -432,7 +436,7 @@ function ShopGui.start()
 		Name = "ButtonColumn",
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 12, 0.5, 0),
-		Size = UDim2.new(0, 110, 0, 200),
+		Size = UDim2.new(0, 110, 0, 360),
 		BackgroundTransparency = 1,
 		Parent = screenGui,
 	})
@@ -461,6 +465,16 @@ function ShopGui.start()
 	local questsButton = createSideButton(buttonColumn, 3, "Quests")
 	questsButton.Activated:Connect(function()
 		QuestGui.toggle()
+	end)
+
+	local wheelButton = createSideButton(buttonColumn, 5, "Wheel")
+	wheelButton.Activated:Connect(function()
+		WheelGui.toggle()
+	end)
+
+	local settingsButton = createSideButton(buttonColumn, 6, "Settings")
+	settingsButton.Activated:Connect(function()
+		SettingsGui.toggle()
 	end)
 
 	-- The Shrink button exists only for Instant Shrink owners, appearing

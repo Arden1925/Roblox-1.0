@@ -285,6 +285,101 @@ local GameConfig = {
 		weightMultiplier = 2,
 	},
 
+	-- The floating main island hub. It sits far behind the worlds on -Z
+	-- and far above them, so nothing collides and the Z-based world
+	-- detection clamps harmlessly to world 1.
+	hub = {
+		centerX = 0,
+		surfaceY = 1200,
+		centerZ = -1200,
+		islandSize = 300,
+		-- How high above the landing pad the cutscene drop begins.
+		skyDropHeight = 220,
+	},
+
+	-- The hub's prize wheel: one free spin per cooldown, extra spins
+	-- sold as a developer product. Weights are relative; the list order
+	-- is the order of the bubbles around the wheel.
+	wheel = {
+		cooldownSeconds = 24 * 60 * 60,
+		spinProduct = {
+			key = "WheelSpin",
+			name = "Extra Wheel Spin",
+			description = "Spin the prize wheel again right now.",
+			robuxPrice = 25,
+			productId = 0,
+			effect = "wheelSpin",
+		},
+		rewards = {
+			{
+				label = "150 COINS",
+				kind = "coins",
+				amount = 150,
+				weight = 30,
+				color = { 253, 203, 110 },
+			},
+			{
+				label = "400 COINS",
+				kind = "coins",
+				amount = 400,
+				weight = 20,
+				color = { 255, 177, 66 },
+			},
+			{
+				label = "+50 MAX SIZE",
+				kind = "maxSize",
+				amount = 50,
+				weight = 16,
+				color = { 126, 214, 87 },
+			},
+			{
+				label = "GROWTH POTION",
+				kind = "effect",
+				effectKey = "GrowthPotion",
+				durationSeconds = 300,
+				weight = 12,
+				color = { 255, 121, 198 },
+			},
+			{
+				label = "1,000 COINS",
+				kind = "coins",
+				amount = 1000,
+				weight = 10,
+				color = { 0, 206, 201 },
+			},
+			{
+				label = "+150 MAX SIZE",
+				kind = "maxSize",
+				amount = 150,
+				weight = 7,
+				color = { 156, 136, 255 },
+			},
+			{
+				label = "SPEED POTION",
+				kind = "effect",
+				effectKey = "SpeedPotion",
+				durationSeconds = 300,
+				weight = 4,
+				color = { 9, 132, 227 },
+			},
+			{
+				label = "2,500 COINS",
+				kind = "coins",
+				amount = 2500,
+				weight = 1,
+				color = { 232, 67, 147 },
+			},
+		},
+	},
+
+	-- Client audio buses. Music stays silent until uploaded track ids
+	-- ("rbxassetid://...") are pasted into musicIds.
+	audio = {
+		musicVolume = 0.5,
+		sfxVolume = 0.8,
+		musicIds = {},
+	},
+
 	gates = {
 		openRange = 16,
 		closeDelaySeconds = 1,
@@ -647,6 +742,21 @@ local GameConfig = {
 		"Shrink small to fit through the orange crack, then regrow after.",
 		"Hop the floating steps over the wall to reach the next world.",
 		"Grab coins and touch checkpoints -- they save your spot and pay you!",
+	},
+
+	-- Rotated on the loading screen; one random tip per swap so long
+	-- loads teach something new each time.
+	proTips = {
+		"Shrinking is never a loss -- you always regrow to your Max Size.",
+		"Pets add growth bonuses. Equip your strongest from the backpack!",
+		"Mutated pets grow you MUCH faster -- Celestial is the rarest of all.",
+		"The speed slider is comfort only; growing big is how you win.",
+		"Checkpoints pay coins and save your spot in the parkour.",
+		"Claim the group chest on the Main Island for a free reward!",
+		"Spin the prize wheel every day -- the pink slice pays 2,500 coins.",
+		"Later worlds hatch stronger pets. Push through the gates!",
+		"Daily quests reset at midnight -- claim them before they roll over.",
+		"Rebirth trades your size for permanent growth and hatch luck.",
 	},
 }
 
