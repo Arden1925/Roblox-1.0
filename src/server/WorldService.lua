@@ -74,13 +74,21 @@ function WorldService.attemptTeleport(player: Player, worldIndex: any): (boolean
 			return false, "You need a character to teleport."
 		end
 
-		local hub = GameConfig.hub
-		character:PivotTo(CFrame.new(hub.centerX, hub.surfaceY + 5, hub.centerZ))
+		-- The island center is now a raised plateau; land on the
+		-- plaza pad like every other arrival.
+		local HubService = require(Server.HubService)
+		character:PivotTo(CFrame.new(HubService.landingPosition()))
 
 		return true, "Welcome home -- the Main Island!"
 	end
 
 	if worldIndex == -1 then
+		-- The separate TDS island is parked behind its flag while the
+		-- town lives on the Main Island.
+		if not GameConfig.tdsIsland.enabled then
+			return false, "TDS Town has moved onto the Main Island!"
+		end
+
 		local character = player.Character
 		if character == nil then
 			return false, "You need a character to teleport."

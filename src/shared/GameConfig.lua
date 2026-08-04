@@ -292,14 +292,17 @@ local GameConfig = {
 		centerX = 0,
 		surfaceY = 1200,
 		centerZ = -1200,
-		islandSize = 300,
+		islandSize = 520,
 		-- How high above the landing pad the cutscene drop begins.
 		skyDropHeight = 220,
 	},
 
-	-- The TDS town: the bought map floating as its own island in the
-	-- terrace's view, fully walkable, reached through any portal.
+	-- The TDS town: the bought map, previously floating as its own
+	-- island in the cove's view. The town now sits ON the Main Island;
+	-- flip enabled to bring the separate island (and its portal row
+	-- and teleport) back exactly as it was.
 	tdsIsland = {
+		enabled = false,
 		centerX = 240,
 		surfaceY = 1150,
 		centerZ = -640,
