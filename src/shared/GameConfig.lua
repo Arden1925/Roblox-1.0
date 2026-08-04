@@ -315,7 +315,10 @@ local GameConfig = {
 
 	-- The hub's prize wheel: one free spin per cooldown, extra spins
 	-- sold as a developer product. Weights are relative; the list order
-	-- is the order of the bubbles around the wheel.
+	-- is the order of the slices around the wheel. tier drives how hard
+	-- the client celebrates: common < uncommon < rare < epic < jackpot.
+	-- The wheel LANDS by these weights, never by slice size, so the
+	-- jackpot slice can look juicy while staying under one percent.
 	wheel = {
 		cooldownSeconds = 24 * 60 * 60,
 		spinProduct = {
@@ -331,62 +334,134 @@ local GameConfig = {
 				label = "150 COINS",
 				kind = "coins",
 				amount = 150,
-				weight = 30,
-				color = { 253, 203, 110 },
+				weight = 22,
+				tier = "common",
+				color = { 178, 190, 195 },
 			},
 			{
 				label = "400 COINS",
 				kind = "coins",
 				amount = 400,
-				weight = 20,
-				color = { 255, 177, 66 },
+				weight = 13,
+				tier = "common",
+				color = { 253, 203, 110 },
 			},
 			{
-				label = "+50 MAX SIZE",
-				kind = "maxSize",
-				amount = 50,
-				weight = 16,
-				color = { 126, 214, 87 },
+				label = "150 COINS",
+				kind = "coins",
+				amount = 150,
+				weight = 22,
+				tier = "common",
+				color = { 178, 190, 195 },
 			},
 			{
 				label = "GROWTH POTION",
 				kind = "effect",
 				effectKey = "GrowthPotion",
 				durationSeconds = 300,
-				weight = 12,
-				color = { 255, 121, 198 },
-			},
-			{
-				label = "1,000 COINS",
-				kind = "coins",
-				amount = 1000,
-				weight = 10,
+				weight = 8,
+				tier = "uncommon",
 				color = { 0, 206, 201 },
 			},
 			{
-				label = "+150 MAX SIZE",
-				kind = "maxSize",
+				label = "150 COINS",
+				kind = "coins",
 				amount = 150,
-				weight = 7,
-				color = { 156, 136, 255 },
+				weight = 22,
+				tier = "common",
+				color = { 178, 190, 195 },
 			},
 			{
-				label = "SPEED POTION",
+				label = "+35 MAX SIZE",
+				kind = "maxSize",
+				amount = 35,
+				weight = 9,
+				tier = "uncommon",
+				color = { 255, 121, 198 },
+			},
+			{
+				label = "900 COINS",
+				kind = "coins",
+				amount = 900,
+				weight = 6,
+				tier = "uncommon",
+				color = { 253, 203, 110 },
+			},
+			{
+				label = "400 COINS",
+				kind = "coins",
+				amount = 400,
+				weight = 13,
+				tier = "common",
+				color = { 178, 190, 195 },
+			},
+			{
+				label = "COIN POTION",
 				kind = "effect",
-				effectKey = "SpeedPotion",
+				effectKey = "CoinPotion",
 				durationSeconds = 300,
-				weight = 4,
-				color = { 9, 132, 227 },
+				weight = 8,
+				tier = "uncommon",
+				color = { 0, 206, 201 },
 			},
 			{
 				label = "2,500 COINS",
 				kind = "coins",
 				amount = 2500,
-				weight = 1,
+				weight = 3,
+				tier = "rare",
+				color = { 156, 136, 255 },
+			},
+			{
+				label = "900 COINS",
+				kind = "coins",
+				amount = 900,
+				weight = 6,
+				tier = "uncommon",
+				color = { 253, 203, 110 },
+			},
+			{
+				label = "MUTATION REROLL",
+				kind = "mutationReroll",
+				weight = 1.5,
+				tier = "epic",
 				color = { 232, 67, 147 },
+			},
+			{
+				label = "+35 MAX SIZE",
+				kind = "maxSize",
+				amount = 35,
+				weight = 9,
+				tier = "uncommon",
+				color = { 255, 121, 198 },
+			},
+			{
+				label = "ULTRA PET",
+				kind = "ultraPet",
+				weight = 0.8,
+				tier = "jackpot",
+				color = { 255, 211, 42 },
 			},
 		},
 	},
+
+	-- Promo codes for the codes window: one redeem per player per code,
+	-- ever. Reuses the wheel reward kinds, so adding a code is one line.
+	codes = {
+		{ code = "RELEASE", label = "250 coins", kind = "coins", amount = 250 },
+		{ code = "SIZEUP", label = "+25 Max Size", kind = "maxSize", amount = 25 },
+		{
+			code = "TWEETY",
+			label = "Growth Potion (5 min)",
+			kind = "effect",
+			effectKey = "GrowthPotion",
+			durationSeconds = 300,
+		},
+	},
+
+	-- The old world strip is cleared down to floors, boundary walls, and
+	-- gate walls -- empty plots waiting for their rebuild.
+	worldsEmptied = true,
 
 	-- Client audio buses. Music stays silent until uploaded track ids
 	-- ("rbxassetid://...") are pasted into musicIds.
@@ -620,6 +695,9 @@ local GameConfig = {
 			exitStepCount = 3,
 			gateRequiredSize = 30,
 			eggName = "Meadow Egg",
+			-- Which egg model from the Classic Studs pack floats in the pod
+			-- and stars in the hatch cinematic.
+			eggModelName = "Rare Egg",
 			eggCost = 100,
 			eggPets = {
 				"Goldfish",
@@ -655,6 +733,7 @@ local GameConfig = {
 			exitStepCount = 3,
 			gateRequiredSize = 80,
 			eggName = "Vent Egg",
+			eggModelName = "Epic Egg",
 			eggCost = 280,
 			eggPets = { "Catfish", "Flounder", "Lobster", "Electric Eel", "Steampunk Turtle" },
 			robuxEgg = {
@@ -685,6 +764,7 @@ local GameConfig = {
 			exitStepCount = 2,
 			gateRequiredSize = 150,
 			eggName = "Ember Egg",
+			eggModelName = "Exclusive Egg",
 			eggCost = 520,
 			eggPets = {
 				"Tigerfish",
@@ -719,6 +799,7 @@ local GameConfig = {
 			floorColor = { 190, 210, 255 },
 			gateRequiredSize = 220,
 			eggName = "Cloud Egg",
+			eggModelName = "Celestial Axolotl Egg",
 			eggCost = 800,
 			eggPets = {
 				"Narwhal",

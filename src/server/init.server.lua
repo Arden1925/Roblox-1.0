@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Server = script
 local CheckpointService = require(Server.CheckpointService)
+local CodeService = require(Server.CodeService)
 local DataService = require(Server.DataService)
 local EconomyService = require(Server.EconomyService)
 local EventService = require(Server.EventService)
@@ -80,6 +81,7 @@ local function snapshotPlayer(player: Player): DataService.PlayerData?
 		quests = quests or {},
 		wheelLastSpinAt = wheelLastSpinAt or 0,
 		wheelSpinCredits = wheelSpinCredits or 0,
+		redeemedCodes = CodeService.snapshot(player) or {},
 	}
 end
 
@@ -135,6 +137,7 @@ local function onPlayerAdded(player: Player)
 		data.groupChestClaimed
 	)
 	WheelService.initializePlayer(player, data.wheelLastSpinAt, data.wheelSpinCredits)
+	CodeService.initializePlayer(player, data.redeemedCodes)
 	player:SetAttribute("TutorialDone", data.tutorialDone)
 	grantOfflineGrowth(player, data)
 
@@ -163,6 +166,7 @@ Players.PlayerRemoving:Connect(function(player)
 	CheckpointService.removePlayer(player)
 	QuestService.removePlayer(player)
 	WheelService.removePlayer(player)
+	CodeService.removePlayer(player)
 	HubService.removePlayer(player)
 
 	if snapshot ~= nil then
@@ -190,6 +194,7 @@ local remoteHandlers: { [string]: (Player, ...any) -> (boolean, any) } = {
 	ClaimStreak = QuestService.claimStreak,
 	ClaimGroupChest = QuestService.claimGroupChest,
 	SpinWheel = WheelService.spin,
+	RedeemCode = CodeService.redeem,
 }
 
 for remoteName, handler in pairs(remoteHandlers) do
@@ -245,7 +250,14 @@ QuestService.start({
 WheelService.start({
 	awardCoins = EconomyService.awardCoins,
 	grantMaxSize = SizeService.grantMaxSize,
+	grantUltraPet = PetService.grantRandomUltraPet,
+	rerollMutation = PetService.rerollEquippedPetMutation,
 })
+CodeService.start({
+	awardCoins = EconomyService.awardCoins,
+	grantMaxSize = SizeService.grantMaxSize,
+})
+PetService.start()
 SizeService.start()
 GateService.start()
 WorldService.start()

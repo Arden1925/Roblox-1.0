@@ -27,6 +27,7 @@ local Workspace = game:GetService("Workspace")
 local Server = script.Parent
 local EconomyService = require(Server.EconomyService)
 local QuestService = require(Server.QuestService)
+local WorldService = require(Server.WorldService)
 
 local Shared = ReplicatedStorage.Shared
 local GameConfig = require(Shared.GameConfig)
@@ -53,12 +54,23 @@ local HATCH_COOLDOWN_SECONDS = 1.5
 local NICKNAME_MINIMUM_LENGTH = 2
 local NICKNAME_MAXIMUM_LENGTH = 20
 
+-- Owner speed (studs/s) above which a rigged pet swaps Idle for Run.
+local RUN_SPEED_THRESHOLD = 4
+local ANIMATION_FADE_SECONDS = 0.2
+-- The hand-authored float for pets that shipped without animations.
+local BOB_STUDS = 0.28
+local BOB_SPEED = 2.2
+
 type FollowerRecord = {
 	model: Model,
 	baseScale: number,
 	billboard: BillboardGui,
 	anchorName: string,
 	appliedScale: number,
+	bodyAttachment: Attachment,
+	idleTrack: AnimationTrack?,
+	runTrack: AnimationTrack?,
+	bobPhase: number,
 }
 
 local petsByPlayer: { [Player]: { string } } = {}
@@ -217,11 +229,75 @@ local function buildNameTag(
 end
 
 --[[
-	Spawns one equipped pet's real model beside its owner: every part
-	welded to the primary part, unanchored and massless, with the body
-	steered by physics constraints so the pet trails naturally as the
-	player moves. slotNumber picks the anchor spot, so multiple pets
-	fan out around the character instead of stacking.
+	Rig detection for the pack animals that shipped with animations:
+	parts held together by Motor6Ds (or serving as the rig root) must
+	NOT be welded to the body, or the welds freeze the joints and the
+	animation cannot move anything.
+]]
+local function collectRiggedParts(model: Model): { [Instance]: boolean }
+	local riggedParts: { [Instance]: boolean } = {}
+
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if descendant:IsA("Motor6D") then
+			if descendant.Part0 ~= nil then
+				riggedParts[descendant.Part0] = true
+			end
+			if descendant.Part1 ~= nil then
+				riggedParts[descendant.Part1] = true
+			end
+		end
+	end
+
+	return riggedParts
+end
+
+-- Starts the pack's own Idle/Run tracks on a rigged pet. Returns nil
+-- tracks for pets without animations; those get the swim-bob instead.
+local function startPackAnimations(model: Model): (AnimationTrack?, AnimationTrack?)
+	local controller = model:FindFirstChildWhichIsA("AnimationController", true)
+	local animator = if controller ~= nil
+		then controller:FindFirstChildWhichIsA("Animator")
+		else nil
+	local animations = model:FindFirstChild("Animations", true)
+	if animator == nil or animations == nil then
+		return nil, nil
+	end
+
+	local function loadTrack(trackName: string): AnimationTrack?
+		local animation = animations:FindFirstChild(trackName)
+		if animation == nil or not animation:IsA("Animation") then
+			return nil
+		end
+
+		-- LoadAnimation throws on malformed animation content; a pet
+		-- with a broken track should fall back to the bob, not error.
+		local loaded, track = pcall(function()
+			return animator:LoadAnimation(animation)
+		end)
+
+		return if loaded then track else nil
+	end
+
+	local idleTrack = loadTrack("Idle")
+	local runTrack = loadTrack("Run")
+	if idleTrack ~= nil then
+		idleTrack.Looped = true
+		idleTrack:Play(ANIMATION_FADE_SECONDS)
+	end
+	if runTrack ~= nil then
+		runTrack.Looped = true
+	end
+
+	return idleTrack, runTrack
+end
+
+--[[
+	Spawns one equipped pet's real model beside its owner, steered by
+	physics constraints so the pet trails naturally as the player moves.
+	Rigged pack animals keep their Motor6D skeletons free and play their
+	bundled animations; everything else is welded rigid and floats on
+	the heartbeat swim-bob. slotNumber picks the anchor spot, so
+	multiple pets fan out around the character instead of stacking.
 ]]
 local function createFollower(player: Player, petIndex: number, slotNumber: number)
 	destroyFollower(player, petIndex)
@@ -241,8 +317,26 @@ local function createFollower(player: Player, petIndex: number, slotNumber: numb
 	end
 
 	local model = PetModels.build(petId)
-	local body = if model ~= nil then model.PrimaryPart else nil
-	if model == nil or body == nil then
+	if model == nil then
+		return
+	end
+
+	-- Rigged animals are driven from their rig root so animations sway
+	-- the body around a stable core; unrigged pets keep the old
+	-- largest-part anchor.
+	local riggedParts = collectRiggedParts(model)
+	local rigRoot = model:FindFirstChild("RootPart", true)
+	local body: BasePart? = nil
+	if rigRoot ~= nil and rigRoot:IsA("BasePart") and next(riggedParts) ~= nil then
+		riggedParts[rigRoot] = true
+		body = rigRoot
+		model.PrimaryPart = rigRoot
+	else
+		riggedParts = {}
+		body = model.PrimaryPart
+	end
+	if body == nil then
+		model:Destroy()
 		return
 	end
 
@@ -257,7 +351,7 @@ local function createFollower(player: Player, petIndex: number, slotNumber: numb
 
 	for _, part in ipairs(model:GetDescendants()) do
 		if part:IsA("BasePart") then
-			if part ~= body then
+			if part ~= body and not riggedParts[part] then
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = body
 				weld.Part1 = part
@@ -282,20 +376,24 @@ local function createFollower(player: Player, petIndex: number, slotNumber: numb
 	alignPosition.Attachment0 = attachment
 	alignPosition.Attachment1 = characterAttachment
 	alignPosition.MaxForce = 40000
-	alignPosition.Responsiveness = 12
+	alignPosition.Responsiveness = 10
 	alignPosition.Parent = body
 
+	-- Softer than the position spring on purpose: the pet leans into
+	-- turns and settles instead of snapping to the new heading.
 	local alignOrientation = Instance.new("AlignOrientation")
 	alignOrientation.Attachment0 = attachment
 	alignOrientation.Attachment1 = characterAttachment
 	alignOrientation.MaxTorque = 40000
-	alignOrientation.Responsiveness = 12
+	alignOrientation.Responsiveness = 5
 	alignOrientation.Parent = body
 
 	local billboard = buildNameTag(body, info, nicknameFor(player, petIndex))
 	billboard.StudsOffset = Vector3.new(0, NAME_TAG_OFFSET_Y * characterScale, 0)
 
 	model.Parent = character
+
+	local idleTrack, runTrack = startPackAnimations(model)
 
 	local followers = followersByPlayer[player]
 	if followers == nil then
@@ -308,6 +406,10 @@ local function createFollower(player: Player, petIndex: number, slotNumber: numb
 		billboard = billboard,
 		anchorName = anchorName,
 		appliedScale = characterScale,
+		bodyAttachment = attachment,
+		idleTrack = idleTrack,
+		runTrack = runTrack,
+		bobPhase = petIndex,
 	}
 end
 
@@ -340,6 +442,63 @@ local function rescaleFollowers(player: Player)
 	end
 end
 
+-- Every Ultra-tier pet the wheel jackpot can grant: the royal-egg
+-- exclusives, never the limited pet. Returns the pet's display name.
+function PetService.grantRandomUltraPet(player: Player): string?
+	local pool = {}
+	for worldIndex, world in ipairs(GameConfig.worlds) do
+		for _, petSpec in ipairs(world.robuxEgg.pets) do
+			if petSpec.tier >= 6 then
+				table.insert(pool, string.format("r%d:%s", worldIndex, petSpec.name))
+			end
+		end
+	end
+	if #pool == 0 then
+		return nil
+	end
+
+	local petId = pool[math.random(#pool)]
+	PetService.grantPet(player, petId)
+
+	local info = PetCatalog.infoFor(petId)
+
+	return if info ~= nil then info.name else petId
+end
+
+--[[
+	The wheel's mutation reroll: the first equipped pet trades its
+	mutation for a fresh guaranteed one, weighted by the normal mutation
+	chances so relative rarities still hold. Returns the pet's new full
+	name, or nil when nothing is equipped.
+]]
+function PetService.rerollEquippedPetMutation(player: Player): string?
+	local pets = petsByPlayer[player]
+	local petIndex = equippedIndices(player)[1]
+	if pets == nil or petIndex == nil or pets[petIndex] == nil then
+		return nil
+	end
+
+	-- Scaling one uniform sample into the combined chance guarantees a
+	-- hit somewhere in the list instead of the usual mostly-nothing.
+	local totalChance = 0
+	for _, spec in ipairs(GameConfig.mutations) do
+		totalChance += spec.chance
+	end
+	local mutationKey = PetCatalog.rollMutation(math.random() * totalChance)
+	if mutationKey == nil then
+		mutationKey = GameConfig.mutations[#GameConfig.mutations].key
+	end
+
+	local newId = PetCatalog.mutatedId(PetCatalog.baseId(pets[petIndex]), mutationKey :: string)
+	pets[petIndex] = newId
+	rebuildFollowers(player)
+	publishInventory(player)
+
+	local info = PetCatalog.infoFor(newId)
+
+	return if info ~= nil then info.name else newId
+end
+
 -- Returns the granted pet's inventory index, or nil if the id is bogus.
 function PetService.grantPet(player: Player, petId: string): number?
 	local pets = petsByPlayer[player]
@@ -353,8 +512,13 @@ function PetService.grantPet(player: Player, petId: string): number?
 	return #pets
 end
 
--- Wired as HatchEgg.OnServerInvoke; hatches the CURRENT world's coin egg.
-function PetService.hatchEgg(player: Player): (boolean, any)
+--[[
+	Wired as HatchEgg.OnServerInvoke; hatches the requested world's coin
+	egg. The hatchery on the Main Island sells every world's egg from
+	one row of capsules, so the world comes from the stand the player
+	used -- gated by the world they have genuinely reached on foot.
+]]
+function PetService.hatchEgg(player: Player, requestedWorld: any): (boolean, any)
 	-- One egg at a time: the client locks the UI during the reveal,
 	-- and this cooldown backs it up against autoclickers and exploits.
 	-- Only a hatch that actually happens arms it, so a player short on
@@ -365,9 +529,18 @@ function PetService.hatchEgg(player: Player): (boolean, any)
 		return false, "One egg at a time!"
 	end
 
-	local worldIndex = player:GetAttribute("CurrentWorld")
+	local worldIndex = requestedWorld
+	if typeof(worldIndex) ~= "number" then
+		worldIndex = player:GetAttribute("CurrentWorld")
+	end
 	if typeof(worldIndex) ~= "number" or GameConfig.worlds[worldIndex] == nil then
 		return false, "Try again in a moment."
+	end
+
+	local reached = WorldService.reachedWorld(player)
+	if reached ~= nil and worldIndex > reached then
+		return false,
+			string.format("Reach %s on foot to unlock its egg!", GameConfig.worlds[worldIndex].name)
 	end
 
 	local world = GameConfig.worlds[worldIndex]
@@ -646,6 +819,53 @@ function PetService.removePlayer(player: Player)
 	followersByPlayer[player] = nil
 	extraSlotByPlayer[player] = nil
 	lastHatchAtByPlayer[player] = nil
+end
+
+--[[
+	One heartbeat keeps every follower alive: rigged pack animals swap
+	between their bundled Idle and Run tracks with the owner's speed,
+	and pets without animations ride a gentle sine bob on their body
+	attachment -- so nothing ever floats frozen.
+]]
+function PetService.start()
+	local bobClock = 0
+
+	RunService.Heartbeat:Connect(function(deltaSeconds)
+		bobClock += deltaSeconds
+
+		for player, followers in pairs(followersByPlayer) do
+			local character = player.Character
+			local characterRoot = if character ~= nil
+				then character:FindFirstChild("HumanoidRootPart")
+				else nil
+			local speed = 0
+			if characterRoot ~= nil and characterRoot:IsA("BasePart") then
+				speed = characterRoot.AssemblyLinearVelocity.Magnitude
+			end
+
+			for _, record in pairs(followers) do
+				local idleTrack = record.idleTrack
+				local runTrack = record.runTrack
+				if idleTrack ~= nil and runTrack ~= nil then
+					if speed > RUN_SPEED_THRESHOLD and not runTrack.IsPlaying then
+						runTrack:Play(ANIMATION_FADE_SECONDS)
+						idleTrack:Stop(ANIMATION_FADE_SECONDS)
+					elseif speed <= RUN_SPEED_THRESHOLD and not idleTrack.IsPlaying then
+						idleTrack:Play(ANIMATION_FADE_SECONDS)
+						runTrack:Stop(ANIMATION_FADE_SECONDS)
+					end
+				elseif idleTrack == nil then
+					record.bodyAttachment.Position = Vector3.new(
+						0,
+						math.sin((bobClock + record.bobPhase) * BOB_SPEED)
+							* -BOB_STUDS
+							* record.appliedScale,
+						0
+					)
+				end
+			end
+		end
+	end)
 end
 
 return PetService

@@ -10,6 +10,7 @@ local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Client = script.Parent
@@ -519,14 +520,81 @@ function QuestGui.start()
 		end)
 	end
 
-	-- Group chest prompts: claim through the server and toast the reply.
+	--[[
+		The giant chest's payoff moment: the lid swings up around its
+		back hinge, coins spray out of the seam, and everything settles
+		shut a few seconds later. Purely cosmetic -- the claim already
+		succeeded on the server before this plays.
+	]]
+	local function animateChestOpen(chest: Instance)
+		local chestModel = chest.Parent
+		local lid = if chestModel ~= nil then chestModel:FindFirstChild("ChestLid") else nil
+		if lid == nil or not lid:IsA("BasePart") then
+			return
+		end
+
+		-- Rotate about the lid's back-bottom edge so it opens like a
+		-- treasure chest instead of spinning in place.
+		local closedCFrame = lid.CFrame
+		local hinge = closedCFrame * CFrame.new(0, -lid.Size.Y / 2, -lid.Size.Z / 2)
+		local openedCFrame = hinge
+			* CFrame.Angles(math.rad(-70), 0, 0)
+			* hinge:Inverse()
+			* closedCFrame
+
+		local burst = Instance.new("ParticleEmitter")
+		burst.Color = ColorSequence.new(Color3.fromRGB(253, 203, 110))
+		burst.Speed = NumberRange.new(14, 24)
+		burst.Lifetime = NumberRange.new(0.7, 1.3)
+		burst.Size = NumberSequence.new(0.55)
+		burst.SpreadAngle = Vector2.new(40, 40)
+		burst.LightEmission = 0.6
+		burst.Enabled = false
+		burst.Parent = lid
+		burst:Emit(50)
+
+		TweenService:Create(
+			lid,
+			TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ CFrame = openedCFrame }
+		):Play()
+
+		task.delay(3.5, function()
+			TweenService:Create(
+				lid,
+				TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+				{ CFrame = closedCFrame }
+			):Play()
+			task.delay(1, function()
+				burst:Destroy()
+			end)
+		end)
+	end
+
+	-- Group chest prompts: claim through the server, toast the reply,
+	-- and when the claim lands, celebrate with the lid.
 	local function watchChest(chest: Instance)
 		local prompt = chest:FindFirstChildOfClass("ProximityPrompt")
 		if prompt ~= nil then
 			prompt.Triggered:Connect(function(playerWhoTriggered)
-				if playerWhoTriggered == localPlayer then
-					invokeAndToast("ClaimGroupChest", nil)
+				if playerWhoTriggered ~= localPlayer then
+					return
 				end
+
+				task.spawn(function()
+					local remote = Remotes.get("ClaimGroupChest") :: RemoteFunction
+
+					-- InvokeServer throws if the server errors mid-call.
+					local invoked, success, message = pcall(function()
+						return remote:InvokeServer(nil)
+					end)
+
+					if invoked and success then
+						animateChestOpen(chest)
+					end
+
+					Toast.show(if invoked then message else "Something went wrong -- try again.")
+				end)
 			end)
 		end
 	end

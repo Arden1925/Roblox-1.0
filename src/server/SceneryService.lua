@@ -13,6 +13,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
+local GameConfig = require(Shared.GameConfig)
 local WorldLayout = require(Shared.WorldLayout)
 
 type PropPath = { string | number }
@@ -263,6 +264,12 @@ local function placeProp(sceneryFolder: Folder, modelsFolder: Instance, placemen
 end
 
 function SceneryService.start()
+	-- Emptied plots stay empty: decorating them would sneak the "stuff"
+	-- right back into the rectangles.
+	if GameConfig.worldsEmptied == true then
+		return
+	end
+
 	local generatedMap = workspace:FindFirstChild("GeneratedMap")
 	if generatedMap == nil then
 		-- A hand-built map arranges its own scenery; placements below
