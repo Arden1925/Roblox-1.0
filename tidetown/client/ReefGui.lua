@@ -146,7 +146,9 @@ function ReefGui.start()
 	local slotFrame = TidetownUi.create("Frame", {
 		Name = "ReefButtonSlot",
 		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 12, 0.5, (BUTTON_SLOT - 3.5) * 88),
+		-- Shifted below screen-center so the column clears the currency
+		-- chips even on short viewports.
+		Position = UDim2.new(0, 12, 0.5, (BUTTON_SLOT - 2.7) * 80),
 		Size = UDim2.new(0, 64, 0, 80),
 		BackgroundTransparency = 1,
 		Parent = screenGui,
