@@ -22,28 +22,102 @@ me things.
 
 ## The Roger 7.0 information
 
-*Nothing recorded yet.* Everything you send me for Roger 7.0 lands under the
-headings below.
+Roger 7.0 is **TIDETOWN** — designed in-session from the proven elements of
+the popular Roblox genres, then implemented under `tidetown/`.
 
 ### Concept
 
-_Waiting on you._
+**TIDETOWN** — every few minutes the sea swallows a seaside town and you
+ride the flood: catch creatures in the exposed tide pools at low tide,
+then surf the flooded streets when the water comes roaring back.
+
+You are a Tidekeeper. The whole server shares one visible tide clock
+(~4 min low, ~2.5 min high, short foam-wall transitions). Low tide exposes
+tide pools, a glowing cave, and the seabed; high tide floods the town to
+the waist, opens mount surfing and the Deep Reef, and sends feral waves
+against every keeper's boardwalk reef plot. One fantasy holds every
+system: *you keep the shore, and the shore keeps changing.*
 
 ### Features
 
-_Waiting on you._
+- **Timed-cast catching** — tap to cast, tap the flashing ring; a perfect
+  tap rolls a strictly better rarity table. The server judges every tap
+  on its own clock; the ring's speed and flash point are randomized per
+  cast so no rhythm farms it.
+- **Egg incubation by catches, not clocks** — eggs charge from successful
+  catches; playing *is* the incubation. Caught species feed the Tidepedia
+  and pay Shells; creatures you *keep* hatch from eggs.
+- **Surge defense** — at high tide, feral waves attack your plot's
+  barrier on a fixed lane. Your 3-creature team fights by role — Anchor,
+  Sprayer, Herder, Sparker — with an explicit mixed-role link bonus, and
+  your deflect tap (plus Sparker triggers) marks engagement. Uncleared
+  enemies become salvage piles: failure pays differently, never punishes.
+- **Mount surfing** — a free pier inner tube means every player surfs
+  their very first flood; owned mounts add speed and Deep Reef access.
+- **Reef building** — a persistent, publicly visible boardwalk aquarium
+  paying capped passive Shells (offline under a third of active rate).
+- **Tidepedia** — every first catch is permanent: capped luck buffs,
+  Keeper Rank, and the zone gates (Town → Cave → Deep Reef).
+- **Daily bounties + a streak that pauses, never resets.**
+- **Full UI suite** — HUD with tide clock and currencies, Shop with
+  published odds, Team, Reef, Tidepedia, Bounties, Settings (music, SFX,
+  reduced motion), egg strip with hatch cinematic, surge banner and
+  deflect button, tutorial, loading screen, toasts.
 
 ### Systems and rules
 
-_Waiting on you._
+1. **Disjoint currencies.** Shells are time-earned (catching, reef,
+   salvage) and buy eggs, reef, cosmetics. Stormglass is skill-earned
+   (cleared surge waves, engagement-gated) and buys mounts and surge
+   gear — things Shells can never touch.
+2. **RNG picks which creature, never how strong.** All species sit in a
+   narrow power band (rarity multipliers 1.0–1.4) as role side-grades.
+3. **The server is the only authority** — casts, currencies, hatches,
+   purchases, surge outcomes, mounts. Clients display and request.
+4. **Every tunable number lives in `tidetown/shared/TidetownConfig.lua`.**
+5. **Surges scale per player** (own lane, own Keeper Rank), escalation
+   resets every cycle, odds are published in the shop, soft pity on every
+   roll, offline gains capped, streaks pause. No monetization systems;
+   nothing purchasable grants power.
+6. Tidetown is a **separate Rojo project** (`tidetown.project.json`,
+   its own place) — it never touches the +1 Size Escape game.
 
 ### Assets and models it uses
 
-_Waiting on you — see the inventory below for what is already on hand._
+| Asset | Used as |
+| --- | --- |
+| `Sea_Animals_Pack` | Every catchable creature, companion, reef tank dweller, surge feral, and mount body |
+| `Classic_Studs_Eggs_Pack` | The four zone eggs and the hatch cinematic |
+| `Tds_Town_Pack` (Scenery) | The floodable town |
+| Part-built | Beach, boardwalk, pier, plots, cave arches, water |
+
+Reused code patterns: DataStore save discipline from `DataService`, the
+model normalizer from `PetModels` (now `CreatureModels`), the remotes
+registry pattern, and the full `UiBuilder` toolkit (now `TidetownUi`).
 
 ### Open questions
 
-_Waiting on you._
+- Sound asset ids are `0` placeholders — paste real ids into the client
+  `SoundController` / config when chosen.
+- Kraken Tide, Daily Tide seed + leaderboard, Rival Tides, bait cooking,
+  and tide variants are deliberately deferred to v1.1/v1.2 (see the
+  concept's critique log in the pull request discussion).
+
+## Implementation map
+
+- `tidetown.project.json` — separate Rojo project (own place in Studio)
+- `tidetown/shared/` — TidePhase, TidetownConfig, TidetownRemotes,
+  CreatureCatalog, CreatureModels, CatchRules, TideLayout
+- `tidetown/server/` — TidetownData, SettingsService, TideClockService,
+  MapBuilder, CurrencyService, TidepediaService, CatchService,
+  CreatureService, EggService, ReefService, BountyService, SurgeService,
+  MountService, ShopService, init.server.lua
+- `tidetown/client/` — TidetownUi, Toast, LoadingGui, HudGui,
+  TideController, SwimController, CatchController, EggGui, TeamGui,
+  ShopGui, SettingsGui, SoundController, TidepediaGui, BountyGui,
+  ReefGui, SurgeGui, MountController, TutorialGui, init.client.lua
+
+Sync it with `rojo serve tidetown.project.json`.
 
 ## What Roger 7.0 can reuse
 
