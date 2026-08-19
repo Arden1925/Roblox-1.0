@@ -4,6 +4,11 @@
 through cracks. See [GAME_DESIGN.md](GAME_DESIGN.md) for the design and the
 map-building tags.
 
+**Roger 7.0** is tracked separately in [ROGER_7.0.md](ROGER_7.0.md) — a
+living document that holds only the new Roger 7.0 information, kept apart
+from the +1 Size Escape design while still free to use the model packs and
+shared modules already in this repository.
+
 A Roblox game project, developed file-first: the code lives in this
 repository and syncs into Roblox Studio with [Rojo](https://rojo.space/).
 
