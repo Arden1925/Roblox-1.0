@@ -50,6 +50,26 @@ Structure and conventions (enforced by review — check these yourself):
 - Never call yielding functions on the main task; wrap them in `task.spawn`/
   `coroutine.wrap` or expose a Promise-like interface.
 
+## Reference library (read before coding or designing)
+
+Deep-study references live in `docs/`. Consult the relevant one BEFORE the
+matching kind of work — they carry decisions, not suggestions:
+
+- [docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md) — engine performance
+  (phones first), memory, networking, Luau craft, DataStore discipline,
+  anti-exploit. Read before writing or reviewing any system code.
+- [docs/DESIGN_LANGUAGE.md](docs/DESIGN_LANGUAGE.md) — the palette system,
+  named palettes for both games, UI tokens, contrast-checked pairs, and
+  the game-feel recipe catalog. Read before touching colors, GUIs,
+  effects, or world-building.
+- [docs/TOP_CREATOR_PLAYBOOK.md](docs/TOP_CREATOR_PLAYBOOK.md) — patterns
+  from the top Roblox studios and the live-ops playbook. Read when
+  designing features, progression, or events.
+- [docs/ASSET_PACK_INDEX.md](docs/ASSET_PACK_INDEX.md) — the authoritative
+  model-name index of every .rbxm pack (exact spellings, traps, structure;
+  machine-readable tree in `docs/asset-pack-index.json`). Read before
+  referencing ANY pack model by name — never guess a model name again.
+
 ## Project layout
 
 - `src/shared/` → `ReplicatedStorage.Shared` (shared modules)

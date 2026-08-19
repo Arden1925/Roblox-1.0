@@ -1,0 +1,610 @@
+--[[
+	Tidetown UI toolkit, ported from the +1 Size Escape UiBuilder: instance building plus the effects that
+	give every window in the game the same feel -- gradients, hover pops,
+	springy open animations, pulsing glows, and a draggable slider. One
+	implementation here keeps ten GUIs consistent.
+]]
+
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+-- Cartoon-style: hovers overshoot and settle with a springy wobble
+-- instead of a flat ease.
+local HOVER_IN_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
+local HOVER_OUT_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local OPEN_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local PULSE_INFO = TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+local POP_IN_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local SHAKE_STEP_INFO = TweenInfo.new(0.06, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+local PRESS_IN_INFO = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+-- The cartoon theme, modeled on the big simulator games: rounded
+-- Fredoka lettering with sticker outlines, white panels with thick navy
+-- borders, candy-colored beveled buttons.
+local CARTOON_FONT = Enum.Font.FredokaOne
+local OUTLINE_NAVY = Color3.fromRGB(31, 41, 74)
+local INTERIOR_COLOR = Color3.fromRGB(244, 250, 255)
+local CLOSE_RED = Color3.fromRGB(235, 69, 44)
+local TEXT_WHITE = Color3.fromRGB(255, 255, 255)
+
+-- Sticker text needs a light fill to read against the navy outline.
+-- Roblox's default text color is black, and a few screens picked their
+-- own dark grays, so fills below this floor are recolored to white.
+-- Text that is dark on purpose (dark-on-gold labels) opts out by
+-- setting the KeepTextColor attribute before parenting.
+local DARK_TEXT_LUMINANCE_FLOOR = 0.3
+
+local TidetownUi = {}
+
+function TidetownUi.create(className: string, properties: { [string]: any }): Instance
+	local instance = Instance.new(className)
+
+	for key, value in pairs(properties) do
+		if key ~= "Parent" then
+			instance[key] = value
+		end
+	end
+
+	instance.Parent = properties.Parent
+
+	return instance
+end
+
+function TidetownUi.round(instance: Instance, radius: number)
+	TidetownUi.create("UICorner", {
+		CornerRadius = UDim.new(0, radius),
+		Parent = instance,
+	})
+end
+
+function TidetownUi.gradient(instance: Instance, topColor: Color3, bottomColor: Color3)
+	TidetownUi.create("UIGradient", {
+		Color = ColorSequence.new(topColor, bottomColor),
+		Rotation = 90,
+		Parent = instance,
+	})
+end
+
+function TidetownUi.stroke(instance: Instance, color: Color3, thickness: number): UIStroke
+	local stroke = TidetownUi.create("UIStroke", {
+		Color = color,
+		Thickness = thickness,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = instance,
+	})
+
+	return stroke :: UIStroke
+end
+
+-- Cartoon hover: the button bounces up in size with a little tilt, then
+-- springs back. UIScale means the button's own Size (and any layout
+-- using it) is never disturbed.
+--[[
+	Hover feedback: the button swells, and gives one quick shake that
+	always settles back to straight. The old version held a tilt for the
+	whole hover, which left buttons frozen mid-lean whenever a layer
+	covered them before MouseLeave fired.
+]]
+function TidetownUi.hoverPop(button: GuiButton)
+	local scale = TidetownUi.create("UIScale", {
+		Scale = 1,
+		Parent = button,
+	}) :: UIScale
+
+	local restRotation = button.Rotation
+	local shakeToken = 0
+
+	local function shake()
+		shakeToken += 1
+		local token = shakeToken
+
+		task.spawn(function()
+			for _, angle in ipairs({ -2.5, 2, -1, 0 }) do
+				if token ~= shakeToken then
+					return
+				end
+
+				local step = TweenService:Create(button, SHAKE_STEP_INFO, {
+					Rotation = restRotation + angle,
+				})
+				step:Play()
+				step.Completed:Wait()
+			end
+		end)
+	end
+
+	local hovered = false
+
+	button.MouseEnter:Connect(function()
+		hovered = true
+		TweenService:Create(scale, HOVER_IN_INFO, { Scale = 1.12 }):Play()
+		shake()
+	end)
+
+	button.MouseLeave:Connect(function()
+		hovered = false
+		-- Invalidate any running shake so it cannot fight the reset.
+		shakeToken += 1
+		TweenService:Create(scale, HOVER_OUT_INFO, { Scale = 1 }):Play()
+		TweenService:Create(button, HOVER_OUT_INFO, { Rotation = restRotation }):Play()
+	end)
+
+	-- Press-down squash: clicks read in the fingers, not just the eyes.
+	-- The release springs back to the hover size (or rest, if the cursor
+	-- already left), and Back-out supplies the pop on its own.
+	button.MouseButton1Down:Connect(function()
+		TweenService:Create(scale, PRESS_IN_INFO, { Scale = 0.92 }):Play()
+	end)
+
+	button.MouseButton1Up:Connect(function()
+		local restingScale = if hovered then 1.12 else 1
+		TweenService:Create(scale, HOVER_OUT_INFO, { Scale = restingScale }):Play()
+	end)
+end
+
+-- Springy pop for opening windows; returns the tween so callers can
+-- chain on Completed if they need to.
+function TidetownUi.popOpen(window: GuiObject): Tween
+	local scale = window:FindFirstChildOfClass("UIScale")
+	if scale == nil then
+		scale = TidetownUi.create("UIScale", { Parent = window }) :: UIScale
+	end
+
+	scale.Scale = 0.7
+	window.Visible = true
+
+	local tween = TweenService:Create(scale, OPEN_INFO, { Scale = 1 })
+	tween:Play()
+
+	return tween
+end
+
+-- An endlessly breathing glow, for buttons that want to be noticed.
+function TidetownUi.pulse(stroke: UIStroke)
+	TweenService:Create(stroke, PULSE_INFO, {
+		Thickness = stroke.Thickness + 2,
+		Transparency = 0.5,
+	}):Play()
+end
+
+--[[
+	Special-item text: a rainbow gradient that slowly sweeps through the
+	label, plus a flashing brightness pulse. One looping tween each, so
+	the cost stays fixed no matter how long the label lives.
+]]
+function TidetownUi.shineText(label: TextLabel)
+	local gradient = TidetownUi.create("UIGradient", {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 89, 94)),
+			ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 202, 58)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(138, 201, 38)),
+			ColorSequenceKeypoint.new(0.75, Color3.fromRGB(25, 130, 196)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 89, 94)),
+		}),
+		Rotation = 0,
+		Parent = label,
+	}) :: UIGradient
+
+	TweenService:Create(
+		gradient,
+		TweenInfo.new(2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+		{ Rotation = 360 }
+	):Play()
+
+	TweenService:Create(
+		label,
+		TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+		{ TextTransparency = 0.35 }
+	):Play()
+end
+
+--[[
+	A bright band that sweeps across a card forever -- the classic
+	storefront shimmer that pulls the eye to featured items.
+]]
+function TidetownUi.shimmer(card: GuiObject)
+	local band = TidetownUi.create("Frame", {
+		Name = "Shimmer",
+		Position = UDim2.new(-0.3, 0, 0, 0),
+		Size = UDim2.new(0.18, 0, 1, 0),
+		Rotation = 12,
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 0.75,
+		BorderSizePixel = 0,
+		ZIndex = 3,
+		Parent = card,
+	})
+
+	TidetownUi.create("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.5, 0.2),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = band,
+	})
+
+	TweenService:Create(
+		band,
+		TweenInfo.new(1.8, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut, -1, false, 1),
+		{ Position = UDim2.new(1.2, 0, 0, 0) }
+	):Play()
+end
+
+--[[
+	Applies the cartoon text treatment to one element: the rounded font
+	plus a thick dark outline that makes text read like a sticker on any
+	background. Buttons additionally get a bevel gradient (a darker
+	bottom lip) and a border if they lack one.
+]]
+local function cartoonizeElement(element: Instance)
+	if element:IsA("TextLabel") or element:IsA("TextButton") or element:IsA("TextBox") then
+		-- The checker cannot pick one type from the union; Font and
+		-- TextColor3 exist on all three, so a TextLabel cast is safe here.
+		local textElement = element :: TextLabel
+		textElement.Font = CARTOON_FONT
+
+		local fill = textElement.TextColor3
+		local luminance = 0.299 * fill.R + 0.587 * fill.G + 0.114 * fill.B
+		local keepColor = textElement:GetAttribute("KeepTextColor") == true
+		if luminance < DARK_TEXT_LUMINANCE_FLOOR and not keepColor then
+			textElement.TextColor3 = TEXT_WHITE
+		end
+
+		if element:FindFirstChild("TextOutline") == nil then
+			TidetownUi.create("UIStroke", {
+				Name = "TextOutline",
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
+				Color = OUTLINE_NAVY,
+				Thickness = 2,
+				Parent = element,
+			})
+		end
+	end
+
+	if element:IsA("TextButton") and element:FindFirstChild("BevelGradient") == nil then
+		TidetownUi.create("UIGradient", {
+			Name = "BevelGradient",
+			Rotation = 90,
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+				ColorSequenceKeypoint.new(0.8, Color3.fromRGB(255, 255, 255)),
+				ColorSequenceKeypoint.new(0.82, Color3.fromRGB(190, 200, 215)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(190, 200, 215)),
+			}),
+			Parent = element,
+		})
+	end
+end
+
+--[[
+	Restyles a whole UI tree to the cartoon theme, and keeps styling
+	anything added under it later -- windows that rebuild their contents
+	stay themed for free. This is a deliberate theming pass, not per-
+	element styling, so every screen matches without editing each one.
+]]
+function TidetownUi.cartoonify(root: Instance)
+	cartoonizeElement(root)
+	for _, descendant in ipairs(root:GetDescendants()) do
+		cartoonizeElement(descendant)
+	end
+
+	root.DescendantAdded:Connect(cartoonizeElement)
+end
+
+--[[
+	Retrofits a standard window (white interior, thick navy border, a
+	colored header banner grown from its Title label, and the red
+	pop-out close button) and cartoonifies everything inside. Windows
+	that rebuild children should skip the names HeaderBanner, Title, and
+	CloseButton when clearing.
+]]
+function TidetownUi.cartoonizeWindow(window: GuiObject, headerColor: Color3, headerText: string?)
+	window.BackgroundColor3 = INTERIOR_COLOR
+	window.BackgroundTransparency = 0
+
+	-- The interior must be clean white-blue; strip any old dark gradient
+	-- and recolor the border to the navy sticker outline.
+	local gradient = window:FindFirstChildOfClass("UIGradient")
+	if gradient ~= nil then
+		gradient:Destroy()
+	end
+
+	local border = window:FindFirstChildOfClass("UIStroke")
+	if border == nil then
+		border = TidetownUi.stroke(window, OUTLINE_NAVY, 3.5)
+	end
+	border.Color = OUTLINE_NAVY
+	border.Thickness = 3.5
+
+	local title = window:FindFirstChild("Title")
+	if title == nil and headerText ~= nil then
+		title = TidetownUi.create("TextLabel", {
+			Name = "Title",
+			BackgroundTransparency = 1,
+			Text = headerText,
+			TextSize = 24,
+			Parent = window,
+		})
+	end
+
+	-- The corner tab: the title hangs off the window's top-left edge,
+	-- the way the big simulator shops label themselves.
+	if title ~= nil and title:IsA("TextLabel") then
+		local banner = TidetownUi.create("Frame", {
+			Name = "HeaderBanner",
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 14, 0, 2),
+			Size = UDim2.new(0, 200, 0, 46),
+			BackgroundColor3 = headerColor,
+			BorderSizePixel = 0,
+			ZIndex = 3,
+			Parent = window,
+		})
+		TidetownUi.round(banner, 14)
+		TidetownUi.stroke(banner, OUTLINE_NAVY, 3)
+
+		title.Parent = banner
+		title.Position = UDim2.new(0, 0, 0, 0)
+		title.Size = UDim2.new(1, 0, 1, 0)
+		title.TextXAlignment = Enum.TextXAlignment.Center
+		title.TextColor3 = Color3.fromRGB(255, 255, 255)
+		title.TextSize = 22
+		title.ZIndex = 4
+	end
+
+	local close = window:FindFirstChild("CloseButton")
+	if close ~= nil and close:IsA("TextButton") then
+		close.AnchorPoint = Vector2.new(0.5, 0.5)
+		close.Position = UDim2.new(1, -8, 0, 8)
+		close.Size = UDim2.new(0, 42, 0, 42)
+		close.BackgroundColor3 = CLOSE_RED
+		close.ZIndex = 5
+		TidetownUi.stroke(close, OUTLINE_NAVY, 3)
+	end
+
+	TidetownUi.cartoonify(window)
+end
+
+-- The glossy shine: a soft white swoosh in the top-left and a small dot
+-- in the bottom-right, like light on candy. Purely decorative.
+function TidetownUi.gloss(card: GuiObject)
+	if card:FindFirstChild("GlossShine") ~= nil then
+		return
+	end
+
+	local shine = TidetownUi.create("Frame", {
+		Name = "GlossShine",
+		Position = UDim2.new(0, 6, 0, 5),
+		Size = UDim2.new(0, 22, 0, 9),
+		Rotation = -18,
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 0.45,
+		BorderSizePixel = 0,
+		ZIndex = 4,
+		Parent = card,
+	})
+	TidetownUi.round(shine, 6)
+
+	local dot = TidetownUi.create("Frame", {
+		Name = "GlossDot",
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -7, 1, -6),
+		Size = UDim2.new(0, 8, 0, 8),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 0.55,
+		BorderSizePixel = 0,
+		ZIndex = 4,
+		Parent = card,
+	})
+	TidetownUi.round(dot, 6)
+end
+
+--[[
+	A circular icon button with a caption underneath -- the side-button
+	style every simulator uses. Returns the button; the caption rides
+	along inside the returned container.
+]]
+function TidetownUi.iconButton(
+	parent: Instance,
+	order: number,
+	icon: string,
+	caption: string,
+	color: Color3
+): TextButton
+	local container = TidetownUi.create("Frame", {
+		Name = caption .. "Container",
+		LayoutOrder = order,
+		Size = UDim2.new(0, 64, 0, 80),
+		BackgroundTransparency = 1,
+		Parent = parent,
+	})
+
+	local button = TidetownUi.create("TextButton", {
+		Name = caption .. "Button",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 0),
+		Size = UDim2.new(0, 58, 0, 58),
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		Font = CARTOON_FONT,
+		Text = icon,
+		-- Emoji icons ignore this, but text-presentation glyphs (the
+		-- settings gear) render in TextColor3 -- and a TextButton's
+		-- default is black, which sank the gear into its gray button.
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextSize = 26,
+		Parent = container,
+	}) :: TextButton
+	TidetownUi.round(button, 29)
+	TidetownUi.stroke(button, OUTLINE_NAVY, 3)
+	TidetownUi.gloss(button)
+	TidetownUi.hoverPop(button)
+
+	TidetownUi.create("TextLabel", {
+		Name = "Caption",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, 0),
+		Size = UDim2.new(1, 10, 0, 18),
+		BackgroundTransparency = 1,
+		Font = CARTOON_FONT,
+		Text = caption,
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextSize = 14,
+		Parent = container,
+	})
+
+	return button
+end
+
+--[[
+	Makes a scrolling list feel bubbly: rubber-band overscroll, and
+	every item pops in with a springy stagger. Works both for the first
+	fill and for items added later; a fresh burst of items restarts the
+	stagger so rebuilt lists bounce in again.
+]]
+function TidetownUi.bubbly(scroll: ScrollingFrame)
+	scroll.ElasticBehavior = Enum.ElasticBehavior.Always
+	scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+
+	local lastAddedAt = 0
+	local burstCount = 0
+
+	local function popIn(child: Instance)
+		if not child:IsA("GuiObject") then
+			return
+		end
+
+		local now = os.clock()
+		if now - lastAddedAt > 0.2 then
+			burstCount = 0
+		end
+		lastAddedAt = now
+		burstCount += 1
+
+		local scale = TidetownUi.create("UIScale", {
+			Scale = 0,
+			Parent = child,
+		}) :: UIScale
+
+		task.delay(math.min(burstCount, 10) * 0.05, function()
+			TweenService:Create(scale, POP_IN_INFO, { Scale = 1 }):Play()
+		end)
+	end
+
+	for _, child in ipairs(scroll:GetChildren()) do
+		popIn(child)
+	end
+	scroll.ChildAdded:Connect(popIn)
+end
+
+--[[
+	A draggable horizontal slider. Calls onChanged with a value in
+	[minimum, maximum] while dragging and on release. Returns a function
+	that moves the handle programmatically (for initial values).
+]]
+function TidetownUi.slider(
+	parent: Instance,
+	minimum: number,
+	maximum: number,
+	initial: number,
+	accentColor: Color3,
+	onChanged: (number) -> ()
+): (number) -> ()
+	-- Inset by half the handle's width on each side so the handle sits
+	-- fully inside the holder even at the extremes.
+	local track = TidetownUi.create("Frame", {
+		Name = "SliderTrack",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(1, -24, 0, 10),
+		BackgroundColor3 = Color3.fromRGB(72, 84, 96),
+		BorderSizePixel = 0,
+		Parent = parent,
+	})
+	TidetownUi.round(track, 5)
+
+	local fill = TidetownUi.create("Frame", {
+		Name = "SliderFill",
+		Size = UDim2.new(0, 0, 1, 0),
+		BackgroundColor3 = accentColor,
+		BorderSizePixel = 0,
+		Parent = track,
+	})
+	TidetownUi.round(fill, 5)
+
+	local handle = TidetownUi.create("TextButton", {
+		Name = "SliderHandle",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 0),
+		Size = UDim2.new(0, 22, 0, 22),
+		BackgroundColor3 = Color3.fromRGB(245, 246, 250),
+		BorderSizePixel = 0,
+		Text = "",
+		Parent = track,
+	})
+	TidetownUi.round(handle, 11)
+	TidetownUi.stroke(handle, accentColor, 2)
+
+	local function fractionToValue(fraction: number): number
+		return minimum + (maximum - minimum) * math.clamp(fraction, 0, 1)
+	end
+
+	local function moveTo(value: number)
+		local fraction = (value - minimum) / (maximum - minimum)
+		fraction = math.clamp(fraction, 0, 1)
+		handle.Position = UDim2.new(fraction, 0, 0.5, 0)
+		fill.Size = UDim2.new(fraction, 0, 1, 0)
+	end
+
+	local dragging = false
+
+	local function updateFromInput(inputPosition: Vector2)
+		local fraction = (inputPosition.X - track.AbsolutePosition.X) / track.AbsoluteSize.X
+		local value = fractionToValue(fraction)
+		moveTo(value)
+		onChanged(value)
+	end
+
+	handle.InputBegan:Connect(function(input)
+		if
+			input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch
+		then
+			dragging = true
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if
+			input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch
+		then
+			dragging = false
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if
+			dragging
+			and (
+				input.UserInputType == Enum.UserInputType.MouseMovement
+				or input.UserInputType == Enum.UserInputType.Touch
+			)
+		then
+			updateFromInput(Vector2.new(input.Position.X, input.Position.Y))
+		end
+	end)
+
+	track.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			updateFromInput(Vector2.new(input.Position.X, input.Position.Y))
+		end
+	end)
+
+	moveTo(initial)
+
+	return moveTo
+end
+
+return TidetownUi

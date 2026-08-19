@@ -1,0 +1,29 @@
+{
+  "name": "Tidetown",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "TidetownShared": {
+        "$path": "tidetown/shared"
+      },
+      "Assets": {
+        "$className": "Folder",
+        "Models": {
+          "$path": "assets/models"
+        }
+      }
+    },
+    "ServerScriptService": {
+      "TidetownServer": {
+        "$path": "tidetown/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "TidetownClient": {
+          "$path": "tidetown/client"
+        }
+      }
+    }
+  }
+}
