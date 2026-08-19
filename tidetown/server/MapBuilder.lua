@@ -768,6 +768,16 @@ function MapBuilder.build()
 	buildSpawnAndRescue(folder)
 
 	folder.Parent = Workspace
+
+	-- A template place ships its own SpawnLocation out on the open
+	-- baseplate -- underwater at high tide. Foreign spawns are disabled
+	-- (never deleted) so the boardwalk spawn is always the one that
+	-- wins, following the MapGenerator convention in the first game.
+	for _, descendant in ipairs(Workspace:GetDescendants()) do
+		if descendant:IsA("SpawnLocation") and not descendant:IsDescendantOf(folder) then
+			descendant.Enabled = false
+		end
+	end
 end
 
 function MapBuilder.plotPad(plotIndex: number): BasePart?
