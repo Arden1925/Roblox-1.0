@@ -19,7 +19,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           version: v2.0.2
-          args: --check src
+          args: --check src tidetown
 
   analyze:
     name: Luau type analysis
@@ -40,3 +40,5 @@ jobs:
         run: |
           ./rojo sourcemap default.project.json -o sourcemap.json
           ./luau-lsp analyze --sourcemap=sourcemap.json --definitions=globalTypes.d.luau src
+          ./rojo sourcemap tidetown.project.json -o tidetown-sourcemap.json
+          ./luau-lsp analyze --sourcemap=tidetown-sourcemap.json --definitions=globalTypes.d.luau tidetown
