@@ -8,6 +8,7 @@
 
 local Client = script
 local BountyGui = require(Client.BountyGui)
+local CameraFx = require(Client.CameraFx)
 local CatchController = require(Client.CatchController)
 local EggGui = require(Client.EggGui)
 local HudGui = require(Client.HudGui)
@@ -27,6 +28,7 @@ local TutorialGui = require(Client.TutorialGui)
 
 task.spawn(LoadingGui.start)
 task.spawn(Toast.start)
+task.spawn(CameraFx.start)
 task.spawn(HudGui.start)
 task.spawn(TideController.start)
 task.spawn(SwimController.start)

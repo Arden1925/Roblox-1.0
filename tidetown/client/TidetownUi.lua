@@ -16,6 +16,7 @@ local OPEN_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection
 local PULSE_INFO = TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
 local POP_IN_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local SHAKE_STEP_INFO = TweenInfo.new(0.06, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+local PRESS_IN_INFO = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 -- The cartoon theme, modeled on the big simulator games: rounded
 -- Fredoka lettering with sticker outlines, white panels with thick navy
@@ -112,16 +113,32 @@ function TidetownUi.hoverPop(button: GuiButton)
 		end)
 	end
 
+	local hovered = false
+
 	button.MouseEnter:Connect(function()
+		hovered = true
 		TweenService:Create(scale, HOVER_IN_INFO, { Scale = 1.12 }):Play()
 		shake()
 	end)
 
 	button.MouseLeave:Connect(function()
+		hovered = false
 		-- Invalidate any running shake so it cannot fight the reset.
 		shakeToken += 1
 		TweenService:Create(scale, HOVER_OUT_INFO, { Scale = 1 }):Play()
 		TweenService:Create(button, HOVER_OUT_INFO, { Rotation = restRotation }):Play()
+	end)
+
+	-- Press-down squash: clicks read in the fingers, not just the eyes.
+	-- The release springs back to the hover size (or rest, if the cursor
+	-- already left), and Back-out supplies the pop on its own.
+	button.MouseButton1Down:Connect(function()
+		TweenService:Create(scale, PRESS_IN_INFO, { Scale = 0.92 }):Play()
+	end)
+
+	button.MouseButton1Up:Connect(function()
+		local restingScale = if hovered then 1.12 else 1
+		TweenService:Create(scale, HOVER_OUT_INFO, { Scale = restingScale }):Play()
 	end)
 end
 

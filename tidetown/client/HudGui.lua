@@ -8,6 +8,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
@@ -118,26 +119,49 @@ local function buildCurrencyChip(
 	return valueLabel, scale
 end
 
-local function wireCurrencyChip(attributeName: string, valueLabel: TextLabel, scale: UIScale)
-	local lastShown = 0
+local ODOMETER_RATE = 8
+local GOLD_FLASH_COLOR = Color3.fromRGB(255, 199, 92)
 
-	local function refresh(canBounce: boolean)
+--[[
+	Currency text never snaps: the displayed number rolls toward the
+	real value like an odometer, and gains bounce the chip and flash
+	the digits gold. Spending rolls down quietly -- losses should never
+	celebrate.
+]]
+local function wireCurrencyChip(attributeName: string, valueLabel: TextLabel, scale: UIScale)
+	local shown = 0
+	local target = 0
+
+	local initial = localPlayer:GetAttribute(attributeName)
+	if typeof(initial) == "number" then
+		shown = initial
+		target = initial
+		valueLabel.Text = tostring(math.floor(initial))
+	end
+
+	localPlayer:GetAttributeChangedSignal(attributeName):Connect(function()
 		local value = localPlayer:GetAttribute(attributeName)
 		if typeof(value) ~= "number" then
 			return
 		end
 
-		valueLabel.Text = tostring(math.floor(value))
-		-- Only gains bounce; spending should not celebrate.
-		if canBounce and value > lastShown then
+		if value > target then
 			TweenService:Create(scale, BOUNCE_INFO, { Scale = 1.2 }):Play()
+			TweenService:Create(valueLabel, BOUNCE_INFO, { TextColor3 = GOLD_FLASH_COLOR }):Play()
 		end
-		lastShown = value
-	end
+		target = value
+	end)
 
-	refresh(false)
-	localPlayer:GetAttributeChangedSignal(attributeName):Connect(function()
-		refresh(true)
+	RunService.Heartbeat:Connect(function(deltaTime)
+		if shown == target then
+			return
+		end
+
+		shown += (target - shown) * math.min(1, deltaTime * ODOMETER_RATE)
+		if math.abs(target - shown) < 0.5 then
+			shown = target
+		end
+		valueLabel.Text = tostring(math.floor(shown))
 	end)
 end
 

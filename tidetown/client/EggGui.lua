@@ -13,6 +13,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local Client = script.Parent
+local CameraFx = require(Client.CameraFx)
 local TidetownUi = require(Client.TidetownUi)
 local Toast = require(Client.Toast)
 
@@ -326,6 +327,10 @@ function EggGui.start()
 				ZIndex = 5,
 				Parent = content,
 			}) :: Frame
+
+			-- The 3D world flares behind the UI flash, so the reveal
+			-- reads as an event in the scene, not just on the screen.
+			CameraFx.flash()
 
 			local flashIn =
 				TweenService:Create(flash, FLASH_IN_INFO, { BackgroundTransparency = 0 })

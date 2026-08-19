@@ -148,6 +148,11 @@ local function onPlayerAdded(player: Player)
 	end
 end
 
+-- The store handle must exist before the first load can run, or
+-- players present during boot would load defaults into a session that
+-- can never save.
+DataService.start(snapshotPlayer)
+
 Players.PlayerAdded:Connect(function(player)
 	task.spawn(onPlayerAdded, player)
 end)
@@ -235,7 +240,6 @@ resetCharacter.OnServerEvent:Connect(function(player)
 	player:LoadCharacter()
 end)
 
-DataService.start(snapshotPlayer)
 ShopService.start({
 	grantMaxSize = SizeService.grantMaxSize,
 	grantRobuxEggPet = PetService.grantRobuxEggPet,

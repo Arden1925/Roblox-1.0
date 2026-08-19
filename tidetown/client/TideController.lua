@@ -171,6 +171,33 @@ local function scheduleSiren(phase: string, endsAt: number)
 	end)
 end
 
+-- Per-phase color grading from docs/DESIGN_LANGUAGE.md: the mood shifts
+-- ride a ColorCorrection tint over the authored map, never a repaint.
+-- High gains a whisper of saturation (heavier, not brighter); Falling
+-- desaturates into the silver ebb.
+local PHASE_GRADING: { [string]: { tint: Color3, saturation: number } } = {
+	[TidePhase.Low] = { tint = Color3.fromRGB(255, 242, 220), saturation = 0 },
+	[TidePhase.Rising] = { tint = Color3.fromRGB(234, 244, 246), saturation = 0 },
+	[TidePhase.High] = { tint = Color3.fromRGB(207, 230, 232), saturation = 0.05 },
+	[TidePhase.Falling] = { tint = Color3.fromRGB(228, 235, 238), saturation = -0.05 },
+}
+
+local gradingEffect: ColorCorrectionEffect? = nil
+
+local function applyGrading(phase: string, seconds: number)
+	local effect = gradingEffect
+	local grading = PHASE_GRADING[phase]
+	if effect == nil or grading == nil then
+		return
+	end
+
+	TweenService:Create(
+		effect,
+		TweenInfo.new(seconds, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+		{ TintColor = grading.tint, Saturation = grading.saturation }
+	):Play()
+end
+
 local function applyLighting(flooded: boolean, seconds: number)
 	local targetFogEnd = if flooded then highFogEnd else baseFogEnd
 	local targetAmbient = if flooded then highAmbient else baseAmbient
@@ -205,6 +232,7 @@ local function onTideChanged(phase: string, endsAt: number, waterY: number, seco
 			tweenWaterTop(part, waterY, tweenSeconds)
 		end
 		applyLighting(phase == TidePhase.Rising, tweenSeconds)
+		applyGrading(phase, tweenSeconds)
 	else
 		-- Low and High are resting levels: kill any straggling tween
 		-- and pin the water exactly where the server says it is.
@@ -212,6 +240,7 @@ local function onTideChanged(phase: string, endsAt: number, waterY: number, seco
 			snapWaterTop(part, waterY)
 		end
 		applyLighting(phase == TidePhase.High, LIGHTING_SNAP_SECONDS)
+		applyGrading(phase, LIGHTING_SNAP_SECONDS)
 	end
 end
 
@@ -232,6 +261,13 @@ function TideController.start()
 	baseAmbient = Lighting.OutdoorAmbient
 	highFogEnd = math.min(baseFogEnd, HIGH_TIDE_FOG_END)
 	highAmbient = baseAmbient:Lerp(HIGH_TIDE_AMBIENT, AMBIENT_TINT_ALPHA)
+
+	local grading = Instance.new("ColorCorrectionEffect")
+	grading.Name = "TidetownGrading"
+	grading.TintColor = PHASE_GRADING[TidePhase.Low].tint
+	grading.Saturation = PHASE_GRADING[TidePhase.Low].saturation
+	grading.Parent = Lighting
+	gradingEffect = grading
 
 	if SIREN_SOUND_ID ~= 0 then
 		local sound = Instance.new("Sound")

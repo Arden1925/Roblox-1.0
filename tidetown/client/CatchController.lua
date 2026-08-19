@@ -16,6 +16,7 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Client = script.Parent
+local CameraFx = require(Client.CameraFx)
 local TidetownUi = require(Client.TidetownUi)
 local Toast = require(Client.Toast)
 
@@ -436,6 +437,14 @@ function CatchController.start()
 			end
 		elseif typeof(payload) == "table" then
 			resultToast(payload)
+			-- Rewards land in the body, scaled with value: perfect taps
+			-- kick the camera, top rarities flare the world.
+			if payload.quality == "perfect" then
+				CameraFx.punchFov(-4)
+			end
+			if payload.rarity == "epic" or payload.rarity == "legendary" then
+				CameraFx.flash()
+			end
 			if typeof(payload.speciesKey) == "string" and typeof(payload.rarity) == "string" then
 				showResultCard(gui.screenGui, payload)
 			end

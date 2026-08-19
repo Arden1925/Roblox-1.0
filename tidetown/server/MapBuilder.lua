@@ -50,7 +50,8 @@ local BARRIER_COLOR = Color3.fromRGB(66, 165, 245)
 local PERCH_COLOR = Color3.fromRGB(240, 128, 128)
 local PAD_COLOR = Color3.fromRGB(190, 200, 210)
 local TUBE_COLOR = Color3.fromRGB(255, 110, 100)
-local ARCH_COLOR = Color3.fromRGB(120, 112, 134)
+-- Violet-shifted dark, never black: the glow trio is the light source.
+local ARCH_COLOR = Color3.fromRGB(74, 68, 88)
 
 local CRYSTAL_COLORS = {
 	Color3.fromRGB(102, 255, 255),
