@@ -121,6 +121,17 @@ end
 local function onPlayerAdded(player: Player)
 	local data = TidetownData.loadAsync(player)
 
+	-- loadAsync yields (GetAsync plus retry backoff); the player may have
+	-- left while it ran, and their PlayerRemoving cleanup has already
+	-- come and gone. Initializing now would strand per-player state and
+	-- a reef plot for the server's lifetime, and loadAsync may have
+	-- re-marked the departed session save-safe after that cleanup.
+	if player.Parent == nil then
+		TidetownData.forgetPlayer(player)
+
+		return
+	end
+
 	CurrencyService.initializePlayer(player, data.shells, data.stormglass)
 	TidepediaService.initializePlayer(player, data.tidepedia)
 	CreatureService.initializePlayer(
@@ -162,15 +173,6 @@ local function onPlayerAdded(player: Player)
 	-- The loading screen watches this flag; everything the client needs
 	-- has been pushed by the initializers above.
 	player:SetAttribute("TidetownReady", true)
-end
-
-Players.PlayerAdded:Connect(function(player)
-	task.spawn(onPlayerAdded, player)
-end)
-
--- Players who joined while the server was still booting.
-for _, player in ipairs(Players:GetPlayers()) do
-	task.spawn(onPlayerAdded, player)
 end
 
 Players.PlayerRemoving:Connect(function(player)
@@ -313,3 +315,67 @@ BountyService.start({
 	awardStormglass = CurrencyService.awardStormglass,
 	pushToast = pushToast,
 })
+SettingsService.start()
+
+-- Clients ask for their state slices again once their listeners are
+-- connected: the join-burst pushes can fire before any client handler
+-- exists, and queued remote events drain only into the first
+-- connection. Every pushState no-ops for uninitialized players, so
+-- early or repeated requests are harmless.
+local statePushersByKind: { [string]: (Player) -> () } = {
+	creatures = CreatureService.pushState,
+	eggs = EggService.pushState,
+	reef = ReefService.pushState,
+	tidepedia = TidepediaService.pushState,
+	bounties = BountyService.pushState,
+	mounts = MountService.pushState,
+	shop = ShopService.pushState,
+	settings = SettingsService.pushState,
+}
+
+local lastSyncRequestClocksByPlayer: { [Player]: { [string]: number } } = {}
+
+local requestSync = TidetownRemotes.get("RequestSync") :: RemoteEvent
+requestSync.OnServerEvent:Connect(function(player, kind)
+	if typeof(kind) ~= "string" then
+		return
+	end
+
+	local pusher = statePushersByKind[kind]
+	if pusher == nil then
+		return
+	end
+
+	-- Per-kind cooldown: the join burst asks for every slice at once
+	-- and must fully succeed, while spam for one slice stays bounded.
+	local clocks = lastSyncRequestClocksByPlayer[player]
+	if clocks == nil then
+		clocks = {}
+		lastSyncRequestClocksByPlayer[player] = clocks
+	end
+
+	local now = os.clock()
+	if now - (clocks[kind] or 0) < 1 then
+		return
+	end
+	clocks[kind] = now
+
+	pusher(player)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	lastSyncRequestClocksByPlayer[player] = nil
+end)
+
+-- Join wiring goes last: every service must be started -- the data
+-- store handle assigned, sync remotes fetched -- before the first
+-- onPlayerAdded can run, or boot-time joiners load defaults into a
+-- session that can never save.
+Players.PlayerAdded:Connect(function(player)
+	task.spawn(onPlayerAdded, player)
+end)
+
+-- Players who joined while the server was still booting.
+for _, player in ipairs(Players:GetPlayers()) do
+	task.spawn(onPlayerAdded, player)
+end

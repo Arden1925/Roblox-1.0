@@ -47,9 +47,15 @@ export type PlayerData = {
 }
 
 local store = nil
-local loadedOkByUserId: { [number]: boolean } = {}
+-- Keyed by UserId but storing the Player INSTANCE whose load
+-- succeeded: a rejoin produces a fresh instance, so a leave-save or
+-- forgetPlayer that finishes after a fast rejoin can neither clear
+-- nor inherit the new session's save eligibility.
+local loadedPlayerByUserId: { [number]: Player } = {}
 
 local TidetownData = {}
+
+local pendingSaves = 0
 
 local function copyDefaultData(): PlayerData
 	return {
@@ -161,6 +167,18 @@ local function sanitize(result: any): PlayerData
 			end
 		end
 	end
+
+	-- nextUid must stay ahead of every kept creature uid, or a corrupt
+	-- record would make the next hatch mint a duplicate uid that
+	-- permanently shadows an existing creature.
+	local highestUidNumber = 0
+	for _, creature in ipairs(data.creatures) do
+		local uidNumber = tonumber(string.match(creature.uid, "^c(%d+)$"))
+		if uidNumber ~= nil and uidNumber > highestUidNumber then
+			highestUidNumber = uidNumber
+		end
+	end
+	data.nextUid = math.max(math.floor(data.nextUid), highestUidNumber + 1)
 
 	-- The defense team stores creature uids; CreatureService ignores
 	-- any uid that no longer exists, so string-checking plus the size
@@ -294,7 +312,7 @@ function TidetownData.loadAsync(player: Player): PlayerData
 		end)
 
 		if success then
-			loadedOkByUserId[player.UserId] = true
+			loadedPlayerByUserId[player.UserId] = player
 
 			return sanitize(result)
 		end
@@ -314,15 +332,21 @@ end
 	Silently refuses when the load never succeeded (see file comment).
 ]]
 function TidetownData.saveAsync(player: Player, snapshot: PlayerData)
-	if store == nil or loadedOkByUserId[player.UserId] ~= true then
+	if store == nil or loadedPlayerByUserId[player.UserId] ~= player then
 		return
 	end
 
 	-- SetAsync throws on throttling and outages; one retry is enough here
 	-- because autosave and the leave-save give us more chances later.
+	-- BindToClose drains this counter so the server never dies with a
+	-- leave-save still in flight.
+	pendingSaves += 1
+
 	local success, result = pcall(function()
 		store:SetAsync(tostring(player.UserId), snapshot)
 	end)
+
+	pendingSaves -= 1
 
 	if not success then
 		warn(string.format("Data save failed for %s: %s", player.Name, tostring(result)))
@@ -330,7 +354,12 @@ function TidetownData.saveAsync(player: Player, snapshot: PlayerData)
 end
 
 function TidetownData.forgetPlayer(player: Player)
-	loadedOkByUserId[player.UserId] = nil
+	-- Only forget the session that is actually this instance; a stale
+	-- deferred forget from a previous session must not evict a rejoined
+	-- player's fresh eligibility.
+	if loadedPlayerByUserId[player.UserId] == player then
+		loadedPlayerByUserId[player.UserId] = nil
+	end
 end
 
 --[[
@@ -364,11 +393,18 @@ function TidetownData.start(getSnapshot: (Player) -> PlayerData?)
 	end)
 
 	game:BindToClose(function()
+		-- Saves run in parallel to fit the shutdown budget; task.spawn
+		-- runs each one synchronously up to its first yield, so every
+		-- save increments pendingSaves before the drain loop below.
 		for _, player in ipairs(Players:GetPlayers()) do
 			local snapshot = getSnapshot(player)
 			if snapshot ~= nil then
-				TidetownData.saveAsync(player, snapshot)
+				task.spawn(TidetownData.saveAsync, player, snapshot)
 			end
+		end
+
+		while pendingSaves > 0 do
+			task.wait(0.1)
 		end
 	end)
 end

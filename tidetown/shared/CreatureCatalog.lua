@@ -398,8 +398,9 @@ function CreatureCatalog.rollSpecies(
 		end
 	end
 
-	-- Walk down from the chosen rarity until a bucket in this zone has
-	-- eligible species.
+	-- Walk down from the chosen rarity, then back up, until a bucket in
+	-- this zone has eligible species: zones missing a rarity outright
+	-- (the Deep Reef has no commons) must never strand the roll.
 	local startIndex = 1
 	for index, rarity in ipairs(RARITY_ORDER) do
 		if rarity == chosenRarity then
@@ -408,7 +409,7 @@ function CreatureCatalog.rollSpecies(
 		end
 	end
 
-	for index = startIndex, #RARITY_ORDER do
+	local function bucketAt(index: number): { Species }
 		local bucket = {}
 		for _, species in ipairs(pool) do
 			local deepAllowed = allowDeepOnly or not species.deepOnly
@@ -417,6 +418,19 @@ function CreatureCatalog.rollSpecies(
 			end
 		end
 
+		return bucket
+	end
+
+	local walkOrder = {}
+	for index = startIndex, #RARITY_ORDER do
+		table.insert(walkOrder, index)
+	end
+	for index = startIndex - 1, 1, -1 do
+		table.insert(walkOrder, index)
+	end
+
+	for _, index in ipairs(walkOrder) do
+		local bucket = bucketAt(index)
 		if #bucket > 0 then
 			local pick = math.clamp(math.floor(speciesSample * #bucket) + 1, 1, #bucket)
 

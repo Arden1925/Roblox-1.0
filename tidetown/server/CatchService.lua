@@ -49,7 +49,16 @@ type CastState = {
 	castsSinceEpic: number,
 	lastCastClock: number,
 	activeCast: ActiveCast?,
+	-- Session-local rolling window for the perfect-rate cap below.
+	judgedCasts: number,
+	perfectCasts: number,
 }
+
+-- The perfect-rate cap: no human lands better than this share of
+-- perfect taps on randomized rings over a real sample.
+local PERFECT_CAP_RATE = 0.6
+local PERFECT_CAP_MINIMUM_SAMPLE = 20
+local PERFECT_CAP_WINDOW = 50
 
 local stateByPlayer: { [Player]: CastState } = {}
 local dependencies: Dependencies? = nil
@@ -76,6 +85,8 @@ function CatchService.initializePlayer(
 		castsSinceEpic = flooredCount(castsSinceEpic),
 		lastCastClock = 0,
 		activeCast = nil,
+		judgedCasts = 0,
+		perfectCasts = 0,
 	}
 end
 
@@ -193,8 +204,41 @@ function CatchService.resolveCast(player: Player, castId: any): (boolean, any)
 	-- score the same ring twice.
 	state.activeCast = nil
 
-	local elapsedFraction = (os.clock() - cast.issuedAt) / cast.window.ringSeconds
+	-- Both halves of the round trip are invisible to the player: the
+	-- ring was drawn half an RTT late and the tap spent the other half
+	-- coming back. Subtracting the engine-measured ping aligns the
+	-- judgment with what the player actually saw; the clamp keeps
+	-- early spam taps scoring as misses.
+	local roundTripSeconds = 2 * player:GetNetworkPing()
+	local elapsedSeconds = math.max(os.clock() - cast.issuedAt - roundTripSeconds, 0)
+	local elapsedFraction = elapsedSeconds / cast.window.ringSeconds
 	local quality = CatchRules.qualityFor(cast.window, elapsedFraction)
+
+	-- A scripted client that reads the window can tap perfectly every
+	-- time. A rolling cap well above any human rate downgrades the
+	-- overflow to "good" -- the bot still plays, it just stops beating
+	-- the table.
+	if quality ~= "miss" then
+		state.judgedCasts += 1
+		if quality == "perfect" then
+			state.perfectCasts += 1
+			if
+				state.judgedCasts >= PERFECT_CAP_MINIMUM_SAMPLE
+				and state.perfectCasts / state.judgedCasts > PERFECT_CAP_RATE
+			then
+				quality = "good"
+				state.perfectCasts -= 1
+			end
+		end
+
+		if state.judgedCasts >= PERFECT_CAP_WINDOW then
+			-- Halving both counters keeps the ratio while letting the
+			-- window slide, so an early hot streak cannot pin a player
+			-- for the whole session.
+			state.judgedCasts = math.floor(state.judgedCasts / 2)
+			state.perfectCasts = math.floor(state.perfectCasts / 2)
+		end
+	end
 
 	if quality == "miss" then
 		local consolation = TidetownConfig.catch.missConsolationShells

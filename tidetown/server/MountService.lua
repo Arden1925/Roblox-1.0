@@ -25,6 +25,7 @@ local MAP_FOLDER_NAME = "Tidetown"
 local MOUNT_STAND_NAME = "MountStand"
 local STAND_WAIT_SECONDS = 30
 local MOUNT_MODEL_HEIGHT_STUDS = 5
+local MOUNT_REQUEST_COOLDOWN_SECONDS = 1
 -- The seat's top face rides this far above the water surface, so the
 -- rider's legs skim the waves instead of sinking.
 local SEAT_TOP_ABOVE_WATER_STUDS = 1
@@ -76,6 +77,7 @@ type Dependencies = {
 local MountService = {}
 
 local mountsOwnedByPlayer: { [Player]: { string } } = {}
+local lastRequestClockByPlayer: { [Player]: number } = {}
 local activeMountsByPlayer: { [Player]: ActiveMount } = {}
 local dependencies: Dependencies? = nil
 local syncStateRemote: RemoteEvent? = nil
@@ -394,6 +396,7 @@ function MountService.snapshot(player: Player): { string }?
 end
 
 function MountService.removePlayer(player: Player)
+	lastRequestClockByPlayer[player] = nil
 	despawnMount(player, false)
 	mountsOwnedByPlayer[player] = nil
 end
@@ -450,6 +453,14 @@ function MountService.requestMount(player: Player, mountKey: any): (boolean, any
 	if mountsOwnedByPlayer[player] == nil or activeDependencies == nil then
 		return false, "Not ready"
 	end
+
+	-- Each mount request builds and replicates a whole model; a cooldown
+	-- bounds that churn no matter how the previous ride ended.
+	local now = os.clock()
+	if now - (lastRequestClockByPlayer[player] or 0) < MOUNT_REQUEST_COOLDOWN_SECONDS then
+		return false, "Catch your breath first"
+	end
+	lastRequestClockByPlayer[player] = now
 
 	if typeof(mountKey) ~= "string" then
 		return false, "Unknown mount"

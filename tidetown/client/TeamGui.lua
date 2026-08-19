@@ -244,6 +244,15 @@ function TeamGui.start()
 	local renameRemote = TidetownRemotes.get("RenameCreature") :: RemoteFunction
 	local setTeamRemote = TidetownRemotes.get("SetDefenseTeam") :: RemoteFunction
 	local syncRemote = TidetownRemotes.get("SyncState") :: RemoteEvent
+	-- The join-burst state push can fire before this listener exists
+	-- and queued events drain only into the first connection, so ask
+	-- the server to resend our slices. task.defer runs after the
+	-- Connect below, so the reply always finds the handler.
+	task.defer(function()
+		local requestSync = TidetownRemotes.get("RequestSync") :: RemoteEvent
+		requestSync:FireServer("creatures")
+		requestSync:FireServer("reef")
+	end)
 
 	-- Team toggles refresh existing cards in place instead of tearing
 	-- the grid down, so viewports are only rebuilt on real data syncs.
@@ -541,8 +550,27 @@ function TeamGui.start()
 			companionUid = if typeof(payload.companionUid) == "string"
 				then payload.companionUid
 				else ""
-			serverTeam = if typeof(payload.defenseTeam) == "table" then payload.defenseTeam else {}
-			workingTeam = table.clone(serverTeam)
+			local newTeam = if typeof(payload.defenseTeam) == "table"
+				then payload.defenseTeam
+				else {}
+
+			-- Any sync (a catch, a hatch, a rename) rebroadcasts the
+			-- creatures slice; only a REAL team change may reset the
+			-- player's unapplied working edits.
+			local teamChanged = #newTeam ~= #serverTeam
+			if not teamChanged then
+				for index, uid in ipairs(newTeam) do
+					if serverTeam[index] ~= uid then
+						teamChanged = true
+						break
+					end
+				end
+			end
+
+			serverTeam = newTeam
+			if teamChanged then
+				workingTeam = table.clone(serverTeam)
+			end
 			rebuildGrid()
 		elseif kind == "reef" then
 			reefPlacedUids = {}

@@ -33,6 +33,8 @@ local FOLLOWER_LERP_ALPHA = 0.15
 local BOB_STUDS = 0.3
 local BOB_RADIANS_PER_SECOND = 2.2
 local RESCUE_POSITION = Vector3.new(0, 3.5, 20)
+local RENAME_COOLDOWN_SECONDS = 3
+local EQUIP_COOLDOWN_SECONDS = 0.5
 local STARTER_SPECIES_KEY = "axolotl"
 local STARTER_EGG_KEY = "beachEgg"
 
@@ -64,6 +66,8 @@ type Dependencies = {
 local CreatureService = {}
 
 local statesByPlayer: { [Player]: PlayerState } = {}
+local lastRenameClockByPlayer: { [Player]: number } = {}
+local lastEquipClockByPlayer: { [Player]: number } = {}
 local followersByPlayer: { [Player]: FollowerRecord } = {}
 local dependencies: Dependencies? = nil
 local syncStateRemote: RemoteEvent? = nil
@@ -260,6 +264,8 @@ end
 function CreatureService.removePlayer(player: Player)
 	destroyFollower(player)
 	statesByPlayer[player] = nil
+	lastRenameClockByPlayer[player] = nil
+	lastEquipClockByPlayer[player] = nil
 end
 
 --[[
@@ -302,6 +308,14 @@ function CreatureService.equipCompanion(player: Player, uid: any): (boolean, any
 	if typeof(uid) ~= "string" then
 		return false, "That creature is not yours"
 	end
+
+	-- Each equip rebuilds and replicates a follower model; a light
+	-- cooldown bounds that churn against remote spam.
+	local now = os.clock()
+	if now - (lastEquipClockByPlayer[player] or 0) < EQUIP_COOLDOWN_SECONDS then
+		return false, "Too fast -- try again in a moment"
+	end
+	lastEquipClockByPlayer[player] = now
 
 	if uid == "" then
 		destroyFollower(player)
@@ -405,6 +419,15 @@ function CreatureService.renameCreature(player: Player, uid: any, name: any): (b
 		return false, "That name will not work"
 	end
 
+	-- The cooldown is claimed before the yielding filter call, so a
+	-- burst fired within one filter round-trip cannot all pass the
+	-- check and flood the moderation endpoint.
+	local now = os.clock()
+	if now - (lastRenameClockByPlayer[player] or 0) < RENAME_COOLDOWN_SECONDS then
+		return false, "Too fast -- try again in a moment"
+	end
+	lastRenameClockByPlayer[player] = now
+
 	local finalName = trimmed
 	if not RunService:IsStudio() then
 		-- FilterStringAsync throws on moderation outages and in
@@ -421,6 +444,14 @@ function CreatureService.renameCreature(player: Player, uid: any, name: any): (b
 		end
 
 		finalName = filtered
+	end
+
+	-- The filter yield can outlive the player's session; a stale state
+	-- table must not be mutated or given a follower. The identity check
+	-- also covers a leave-and-rejoin during the yield, where the player
+	-- key exists again but owns a different table.
+	if statesByPlayer[player] ~= state then
+		return false, "Not ready"
 	end
 
 	record.nickname = finalName

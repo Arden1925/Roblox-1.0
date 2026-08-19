@@ -217,6 +217,14 @@ function MountController.start()
 	localPlayer:GetAttributeChangedSignal("Mounted"):Connect(refreshVisibility)
 
 	local syncRemote = TidetownRemotes.get("SyncState") :: RemoteEvent
+	-- The join-burst state push can fire before this listener exists
+	-- and queued events drain only into the first connection, so ask
+	-- the server to resend our slices. task.defer runs after the
+	-- Connect below, so the reply always finds the handler.
+	task.defer(function()
+		local requestSync = TidetownRemotes.get("RequestSync") :: RemoteEvent
+		requestSync:FireServer("mounts")
+	end)
 	syncRemote.OnClientEvent:Connect(function(kind, payload)
 		if kind ~= "mounts" or typeof(payload) ~= "table" then
 			return

@@ -208,6 +208,16 @@ function ShopGui.start()
 
 	local buyRemote = TidetownRemotes.get("BuyShopItem") :: RemoteFunction
 	local syncRemote = TidetownRemotes.get("SyncState") :: RemoteEvent
+	-- The join-burst state push can fire before this listener exists
+	-- and queued events drain only into the first connection, so ask
+	-- the server to resend our slices. task.defer runs after the
+	-- Connect below, so the reply always finds the handler.
+	task.defer(function()
+		local requestSync = TidetownRemotes.get("RequestSync") :: RemoteEvent
+		requestSync:FireServer("shop")
+		requestSync:FireServer("mounts")
+		requestSync:FireServer("reef")
+	end)
 
 	local activeTab = "Eggs"
 	local tabButtons: { [string]: TextButton } = {}

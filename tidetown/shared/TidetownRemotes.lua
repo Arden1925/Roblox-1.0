@@ -22,6 +22,7 @@ local REMOTE_CLASS_BY_NAME = {
 	MarkTutorialDone = "RemoteEvent",
 	PlaceReefCreature = "RemoteFunction",
 	RenameCreature = "RemoteFunction",
+	RequestSync = "RemoteEvent",
 	RequestMount = "RemoteFunction",
 	ResolveCast = "RemoteFunction",
 	SetDefenseTeam = "RemoteFunction",
