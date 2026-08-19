@@ -18,6 +18,7 @@ local EggService = require(Server.EggService)
 local MapBuilder = require(Server.MapBuilder)
 local MountService = require(Server.MountService)
 local ReefService = require(Server.ReefService)
+local SceneryBuilder = require(Server.SceneryBuilder)
 local SettingsService = require(Server.SettingsService)
 local ShopService = require(Server.ShopService)
 local SurgeService = require(Server.SurgeService)
@@ -239,6 +240,7 @@ end)
 -- The map must exist before the clock stamps attributes on its folder,
 -- and both before any service that looks the geometry up.
 MapBuilder.build()
+SceneryBuilder.build()
 TideClockService.start()
 
 TidetownData.start(snapshotPlayer)
